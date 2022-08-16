@@ -1,7 +1,7 @@
 # Gas Log QA Script
 
-# Version 1.3
-# 3/4/2022
+# Version 1.4
+# 8/16/2022
 # Bryan Stolzenburg (Ag Methane Advisors)
 
 # Iterate through list of farms
@@ -12,9 +12,13 @@
 # 1.1 - Added user input to QA all farms or just specific farm(s)
 # 1.2 - Added text wrapping and centering to first row for easier header reading
 # 1.3 - Changed the format of the date column so excel will recognize as a date 
+# 1.4 - Added function to automatically set working directory regardless of user
 
 
+
+# Importing modules 
 import openpyxl as xl
+from pathlib import Path
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Alignment, Font 
 import pandas as pd
@@ -22,54 +26,77 @@ import os
 import datetime 
 from datetime import datetime
 
-## Note: This code is intended to always run in the \gaslogs directory containing the raw merged_logs.csv files
 
 
-# Opening the txt list of farms
-farm_list = open('Farm_Names.txt','r')
+# Function to return file path to 'gaslogs' directory in dropbox to set working directory 
+def SetDirectory():
+    home = Path.home()
 
-# Creating empty global list for farm names
-farms = []
+    gaslog_dir = os.path.join(home,'Patrick J Wood Dropbox','_operations','gaslogs')
+    
+    return(gaslog_dir)
 
-# Appending the names in the txt document to the global list of farm names for use in the main() function
-for line in farm_list.readlines(): 
-    # Removing any empty lines 
-    if not line.strip():
-        continue
+
+
+
+
+# Defining function to get list of farms and create file paths to each farm's merged_log.csv file
+def GetFarms():
+    # Opening the txt list of farms
+    farm_list = open('Farm_Names.txt','r')
+
+    # Creating empty global list for farm names
+    farms = []
+
+    # Appending the names in the txt document to the global list of farm names for use in the main() function
+    for line in farm_list.readlines(): 
+        # Removing any empty lines 
+        if not line.strip():
+            continue
+        else:
+            # removing new line character and leading/trailing white space
+            stripped_line = line.rstrip()
+            stripped_line = stripped_line.strip()
+            farms.append(stripped_line)
+
+    # Closing the txt file 
+    farm_list.close()
+
+    # Get user input to QA specific farms 
+    inputs = input('Do you want to QA all farms? (Y/N) ')
+    print(' ')
+
+    # Convert user input to lowercase 
+    inputs = inputs.lower()
+
+    if inputs == 'y':
+        print('Running QA for all farms')
+        print(' ')
     else:
-        # removing new line character and leading/trailing white space
-        stripped_line = line.rstrip()
-        stripped_line = stripped_line.strip()
-        farms.append(stripped_line)
+        for (i,item) in enumerate(farms):
+            print(i,item)
+        print(' ')
+        # Get user input(s) for farm number
+        farm_index = list(map(int, input('Select a farm(s) from the above list using the corresponding number(s): ').split(' ')))
+        
+        # Selecting farms from master list based on farm_number input 
+        farms = list(map(farms.__getitem__,farm_index))
 
-# Closing the txt file 
-farm_list.close()
+    return(farms)
 
-# Get user input to QA specific farms 
-inputs = input('Do you want to QA all farms? (Y/N) ')
-print(' ')
 
-# Convert user input to lowercase 
-inputs = inputs.lower()
 
-if inputs == 'y':
-    print('Running QA for all farms')
-    print(' ')
-else:
-    for (i,item) in enumerate(farms):
-        print(i,item)
-    print(' ')
-    # Get user input(s) for farm number
-    farm_index = list(map(int, input('Select a farm(s) from the above list using the corresponding number(s): ').split(' ')))
-    
-    # Selecting farms from master list based on farm_number input 
-    farms = list(map(farms.__getitem__,farm_index))
-
-    
 
 ##### Defining main function to read files/ copy data to the quick_qa and open it
 
 def main(): 
+
+    # Setting working directory 
+    os.chdir(SetDirectory())
+
+    # Getting list of farm names and creating file paths
+    farms = GetFarms()
+
     # Creating for loop to iterate through farms 
     for farm_name in farms: 
         
@@ -145,13 +172,15 @@ def main():
         qa.save(quick_qa_filled)
         
         print('')
-        input('Press Enter to Open QA/QC Spreadsheet:')
-        print('')
+        input('Press Enter to Open QA/QC Spreadsheet: ')
+        
         # Open the log_qa_filled file 
         os.system(quick_qa_filled)
 
 # Calling the main function 
 main()
+
+print('')
 print('Finished')
 
 
