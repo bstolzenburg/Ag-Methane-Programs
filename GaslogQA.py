@@ -173,6 +173,7 @@ def main():
         
         print('')
         input('Press Enter to Open QA/QC Spreadsheet: ')
+        print('')
         
         # Open the log_qa_filled file 
         os.system(quick_qa_filled)
