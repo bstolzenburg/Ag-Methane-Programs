@@ -32,10 +32,10 @@ url = 'http://localhost:8086'
 # Main Function
 def main():
 
-    # Setting directory to 'software' folder
+    # Setting directory to Github directory in the 'software' folder
     os.chdir(SetDirectory('software'))
     
-   # Getting file locations from YAML file
+   # Getting file locations from Gaslog_file_locations YAML file
     file_paths = GetFileLocations()
 
     # Setting directory to the 'shortcuts' folder 
@@ -45,13 +45,13 @@ def main():
     os.startfile('Run InfluxDB.lnk')
 
     
-    # Setting directory to to 'gaslogs' folder
+    # Setting directory to 'gaslogs' folder
     os.chdir(SetDirectory('gaslogs'))
 
-    # Reading file_paths dictionary and calling the ProcessLogs() function to process the logs and prepare for input to Influx server
+    # Reading file_paths dictionary and calling the ProcessLogs() function to process the raw .csv logs and prepare for input to Influx server
     for farm,path in file_paths.items():
         
-        # Calling ProcessLogs() function to get dictionary containing processed logs dataframes for each farm
+        # Calling ProcessLogs() function to return dictionary containing processed logs dataframes for each farm
         logs_dict = ProcessLogs(farm,path)
 
         ## Uploading processed logs into InfluxDB 
