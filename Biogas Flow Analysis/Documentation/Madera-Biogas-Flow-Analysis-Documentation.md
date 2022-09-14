@@ -136,7 +136,7 @@ processed_logs <- merged_logs %>%
   mutate(F1_diff = flare_totalizer - lead(flare_totalizer))
 ```
 
-### Correting Totalizer Values
+### Correcting Totalizer Values
 
 Correcting totalizer values when there is: 
 
