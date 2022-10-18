@@ -107,9 +107,8 @@ def main():
         # Creating name folder path
         file_name = farm_name + '_weekly'
         
-        # Creating file path 
-        ## Note: This code is intended to always run in the \gaslogs directory 
-        file_path = os.path.join(r'C:\Users\stolz\Patrick J Wood Dropbox\_operations\gaslogs',file_name)
+        # Creating file path  
+        file_path = os.path.join(SetDirectory(),file_name)
 
         # Creating csv names
 
@@ -184,45 +183,3 @@ main()
 
 print('')
 print('Finished')
-
-
-
-        
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
