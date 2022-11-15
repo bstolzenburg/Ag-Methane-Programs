@@ -1,5 +1,5 @@
 # Biogas Flow Analysis Program 
-# Bryan Stozlenburg (Ag Methane Advisors)
+# Bryan Stolzenburg (Ag Methane Advisors)
 
 
 # Program to process merged_logs and write results to excel file

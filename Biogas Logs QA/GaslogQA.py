@@ -1,18 +1,19 @@
 # Gas Log QA Script
 
-# Version 1.4
-# 8/16/2022
+# Version 1.5
+# 11/15/22
 # Bryan Stolzenburg (Ag Methane Advisors)
 
 # Iterate through list of farms
-# Copy most recent merged_logs to the log_quick_qa for each farm
-# and open the filled log_quick_qa.xlsx files to QA gaslogs after fetching
+# Copy most recent merged_logs .csv to the log_quick_qa for each farm
+# Open the filled log_quick_qa.xlsx files to QA gaslogs after fetching
 
 # List of Updates:
 # 1.1 - Added user input to QA all farms or just specific farm(s)
 # 1.2 - Added text wrapping and centering to first row for easier header reading
 # 1.3 - Changed the format of the date column so excel will recognize as a date 
 # 1.4 - Added function to automatically set working directory regardless of user
+# 1.5 - Removed Gallo from list of farms to QA
 
 
 
