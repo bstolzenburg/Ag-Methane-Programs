@@ -4,15 +4,23 @@
 
 # Program to process merged_logs and write results to excel file
 
+## Updates: 
+# Removed logic to only identify flare flow with negative flow as "invalid totalizer" 
+# Make first column totalizer differences == 0 
+# Included G1_diff and G1_kwh_diff in missing timestamp gap summary
+
 
 # Loading Program Modules
 library(readr)
 library(dplyr)
 library(tidyr)
+library(tidyverse)
 library(writexl)
 library(lubridate)
 library(openxlsx)
 library(chron)
+library(zoo)
+
 
 
 
@@ -21,7 +29,9 @@ library(chron)
 
 # Reading raw logs into merged_logs dataframe
 
-merged_logs <- read.csv('verweymadera_weekly_2022_merged.csv',check.names = FALSE)
+merged_logs <- read.csv('verweymadera_weekly_220831-210901_merged.CSV',check.names = FALSE)
+
+
 
 
 # Saving the original column names as 'headers' variable
@@ -42,7 +52,7 @@ log_columns <- data.frame(col_index,headers)
 print(log_columns)
 
 # Creating list of headers to be changed 
-indexes_to_change <- c(5,7,19,20,21) ###### Input the index for the headers to be changed 
+indexes_to_change <- c(5,7,19,20,21,26) ###### Input the index for the headers to be changed 
 
 change_headers <- data.frame(indexes_to_change)
 
@@ -58,7 +68,8 @@ new_names <- c('engine_totalizer',
                'engine_kwh',
                'flare_totalizer',
                'flare_temp',
-               'average_flare_temp') ### Input the new names in the order they appear in the console
+               'average_flare_temp',
+               'CH4_percent') ### Input the new names in the order they appear in the console
 
 # Adding the new names to the log_columns dataframe 
 log_columns$new_name <- new_names 
@@ -73,9 +84,6 @@ new_names <- headers
 for (x in log_columns$col_index){
   new_names[x]<- log_columns$new_name[log_columns$col_index == x]
 }
-
-# Check to make sure headers are correct
-print(new_names)
 
 # Changing header names of merged logs 
 colnames(merged_logs)<-new_names
@@ -99,6 +107,13 @@ processed_logs <- merged_logs %>%
   mutate(F1_diff = flare_totalizer - lead(flare_totalizer))
 
 
+# Setting Difference == 0 for First Occurance
+processed_logs$G1_diff[nrow(processed_logs)]<- 0 
+processed_logs$G1_kwh_diff[nrow(processed_logs)]<-0
+processed_logs$F1_diff[nrow(processed_logs)]<-0
+
+
+
 ## Function to process and correct totalizer values
 ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   # Quoting variables in function 
@@ -115,9 +130,9 @@ ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   
   # Creating data substitution label (using same logic as above)
   logs <- logs%>%
-    mutate(!!substitution_method := case_when(!!totalizer ==0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
-                                              !!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
+    mutate(!!substitution_method := case_when(!!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               TRUE ~ "Totalizer Feasible"))
+                                              
   
   return(logs)
 }
@@ -137,6 +152,12 @@ processed_logs <- ProcessLogs(processed_logs,engine_kwh,G1_kwh_diff, "G1_kwh","G
 
 # Flare flow 
 processed_logs<- ProcessLogs(processed_logs,flare_totalizer,F1_diff,'F1_flow','F1_flow_valid')
+
+
+
+
+
+
 
 
 ## Function to determine operational activity of flare, differentiate flow accordingly 
@@ -174,12 +195,6 @@ processed_logs<-processed_logs%>%
 ### Gap Analysis
 
 
-# Converting date to correct format 
-
-#processed_logs$Date <-format.Date(processed_logs$Date,"%m/%d/%Y")
-
-
-
 # Function to create date_time variable from separate date/time columns
 DateTime<- function(logs){
   # Convert Time from character to Chron
@@ -195,11 +210,9 @@ DateTime<- function(logs){
 processed_logs <- DateTime(processed_logs)
 
 
-
 # Calculating the time difference based on date_time
 processed_logs<-processed_logs%>%
   mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
-
 
 
 
@@ -210,8 +223,9 @@ processed_logs<-processed_logs%>%
                                        is.na(time_diff)==TRUE ~ 0))
 
 
-# Converting date from character to date variable
-processed_logs$Date<-mdy(processed_logs$Date)
+# Convert date to correct format for excel 
+processed_logs$Date <- mdy(processed_logs$Date)
+
 
 # Dropping columns from the final dataframe
 processed_logs<- processed_logs%>%
@@ -292,13 +306,15 @@ TimestampSummary <- function(logs,missing_timestamp){
     mutate(link = makeHyperlinkString(sheet = 'Biogas Flow',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
     
     # Selecting columns for gap summary 
-    select(Date,Time,!!missing_timestamp,link)
+    ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
+    select(Date,Time,!!missing_timestamp,G1_diff,G1_kwh_diff,link)
   
   
   
   return(gap_summary)
   
 }
+
 
 
 ### Creating gap summaries 
@@ -314,12 +330,40 @@ timestamp_gap_summary <- TimestampSummary(processed_logs,missing_timestamp)
 
 
 
+
+
+# Calculating MT of CH4 collected/metered each month (LOP eq. 5.6)
+
+## Defining constants 
+d_methane <- 0.04230 # density of methane
+
+lb_mt <- 0.000454 # conversion from lbs to mt
+
+# Converting CH4_percent to fraction 
+processed_logs$CH4_percent <- processed_logs$CH4_percent / 100
+
+processed_logs <- processed_logs%>%
+  mutate(MT_CH4 = G1_flow * CH4_percent * d_methane * lb_mt)%>%
+  relocate(MT_CH4, .after = G1_flow)
+  
+  
+
+
+
+
+
+
+### Returning column headers to their original values
+for(x in 1:max_header){
+  colnames(processed_logs)[x]<- headers[x]
+}
+
 ### Writing results to excel 
 
 
 # Writing processed dataframe to excel
 
-file_name = 'Madera 2022 Biogas Flow Summary.xlsx'
+file_name = 'Madera Biogas Flow Summary.xlsx'
 
 # Checking to see if file already exists 
 
@@ -340,6 +384,10 @@ if(file.exists(file_name)==TRUE){
   
   # Adding the processed_logs dataframe to the Biogas Flow tab 
   writeDataTable(wb,sheet = 'Biogas Flow',processed_logs,colName = TRUE,tableName = 'Processed_Logs')
+  
+  ## CH4 Summary
+  # Removing the existing table in the 'Biogas Flow tab'
+  removeTable(wb,sheet = 'CH4 Summary',table = getTables(wb, 'CH4 Summary'))
   
   
   
@@ -375,7 +423,7 @@ if(file.exists(file_name)==TRUE){
   writeDataTable(wb,sheet = 'Gap Summary',timestamp_gap_summary,colName = TRUE, tableName = 'Gap_Summary' )
   
   # Adding the hyperlinks to the Gap Summary Table
-  writeFormula(wb, sheet = 'Gap Summary',startCol = 4, startRow = 2, x = timestamp_gap_summary$link)
+  writeFormula(wb, sheet = 'Gap Summary',startCol = 6, startRow = 2, x = timestamp_gap_summary$link)
   
   
   # Saving workbook 
@@ -422,7 +470,7 @@ if(file.exists(file_name)==TRUE){
   writeDataTable(wb,sheet = 'Gap Summary',timestamp_gap_summary,colName = TRUE, tableName = 'Gap_Summary' )
   
   # Adding the hyperlinks to the Gap Summary Table
-  writeFormula(wb, sheet = 'Gap Summary',startCol = 4, startRow = 2, x = timestamp_gap_summary$link)
+  writeFormula(wb, sheet = 'Gap Summary',startCol = 6, startRow = 2, x = timestamp_gap_summary$link)
   
   
   
