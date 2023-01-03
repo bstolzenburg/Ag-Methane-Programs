@@ -115,9 +115,9 @@ def main():
 
         # Adding in the farms that need 'culled' added to the file path 
         if name == 'fourhills' or name == 'gallo' or name == 'Verweyhanford':
-            csv = file_name + '_2022_merged_culled.CSV'
+            csv = file_name + '_2023_merged_culled.CSV'
         else:
-            csv = file_name + '_2022_merged.CSV'
+            csv = file_name + '_2023_merged.CSV'
         
         # creating raw quick_qa name 
         quick_qa = 'log_quick_qa_' + name + '.xlsx'
