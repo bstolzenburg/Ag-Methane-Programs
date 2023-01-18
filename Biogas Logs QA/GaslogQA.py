@@ -114,7 +114,7 @@ def main():
         # Creating csv names
 
         # Adding in the farms that need 'culled' added to the file path 
-        if name == 'fourhills' or name == 'gallo' or name == 'Verweyhanford':
+        if name == 'Verweyhanford' or name == 'fourhills':
             csv = file_name + '_2023_merged_culled.CSV'
         else:
             csv = file_name + '_2023_merged.CSV'

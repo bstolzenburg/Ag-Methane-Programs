@@ -102,7 +102,7 @@ def GetFileLocations():
 
     
     # Setting file location for YAML config file 
-    config = r'Gaslog_file_locations.yml'
+    config = r'Gaslog_file_locations_23.yml'
 
     # Reading the YAML file and getting file paths dictionary 
     with open(config) as file:

@@ -1,0 +1,25 @@
+# Organize file paths to raw logs .csv files 
+
+# Farm
+# - folder
+# - .csv file name
+
+
+Aurora Ridge: 
+- aurora_weekly 
+- aurora_weekly_2023_merged.CSV
+Berkshire: 
+- berkshire_weekly
+- berkshire_weekly_2023_merged.csv
+Chaput:
+- Chaput_weekly
+- Chaput_weekly_2023_merged.csv
+Four Hills:
+- fourhills_weekly
+- fourhills_weekly_2023_merged.csv
+Hanford:
+- Verweyhanford_weekly
+- Verweyhanford_weekly_2023_merged.csv
+Madera:
+- verweymadera_weekly
+- verweymadera_weekly_2023_merged.csv

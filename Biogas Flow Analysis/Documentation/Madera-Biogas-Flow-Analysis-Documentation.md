@@ -2,7 +2,7 @@
 
 # Documentation for Madera Biogas Flow Analysis
 
-**8/18/2022**
+**1/9/2023**
 
 **Bryan Stolzenburg**
 
@@ -27,21 +27,16 @@ The following document outlines the program. Chunks of code are outlined in boxe
 - Formatting excel results 
 
 ```r
-# Biogas Flow Analysis Program 
-# Bryan Stozlenburg (Ag Methane Advisors)
-# 7.19.22
-
-# Program to process merged_logs and write results to excel file
-
-
 # Loading Program Modules
 library(readr)
 library(dplyr)
 library(tidyr)
+library(tidyverse)
 library(writexl)
 library(lubridate)
 library(openxlsx)
 library(chron)
+library(zoo)
 ```
 
 # Reading Raw Gas Logs
@@ -55,7 +50,9 @@ library(chron)
 
 # Reading raw logs into merged_logs dataframe
 
-merged_logs <- read.csv('verweymadera_weekly_2022_merged.csv',check.names = FALSE)
+merged_logs <- read.csv('Madera Merged Weekly Logs Aug 21 - July 22.CSV',check.names = FALSE)
+
+
 
 
 # Saving the original column names as 'headers' variable
@@ -108,9 +105,6 @@ for (x in log_columns$col_index){
   new_names[x]<- log_columns$new_name[log_columns$col_index == x]
 }
 
-# Check to make sure headers are correct
-print(new_names)
-
 # Changing header names of merged logs 
 colnames(merged_logs)<-new_names
 
@@ -125,7 +119,6 @@ rm(change_headers, log_columns,col_index,indexes_to_change,new_names,x)
 ```r
 ### Processing merged logs
 
-
 # Calculating engine flow based on totalizer values
 processed_logs <- merged_logs %>%
   # Calculating G1 flow based on totalizer
@@ -134,6 +127,12 @@ processed_logs <- merged_logs %>%
   mutate(G1_kwh_diff = engine_kwh - lead(engine_kwh))%>%
   #  Calculating F1 flow based on totalizer
   mutate(F1_diff = flare_totalizer - lead(flare_totalizer))
+
+
+# Setting Difference == 0 for First Occurance
+processed_logs$G1_diff[nrow(processed_logs)]<- 0 
+processed_logs$G1_kwh_diff[nrow(processed_logs)]<-0
+processed_logs$F1_diff[nrow(processed_logs)]<-0
 ```
 
 ### Correcting Totalizer Values
@@ -146,6 +145,25 @@ Correcting totalizer values when there is:
 Creates data substitution label when corrections are made
 
 ```r
+### Processing merged logs
+
+# Calculating engine flow based on totalizer values
+processed_logs <- merged_logs %>%
+  # Calculating G1 flow based on totalizer
+  mutate(G1_diff = engine_totalizer - lead(engine_totalizer))%>%
+  # Calculating G1 kWH/15 minutes
+  mutate(G1_kwh_diff = engine_kwh - lead(engine_kwh))%>%
+  #  Calculating F1 flow based on totalizer
+  mutate(F1_diff = flare_totalizer - lead(flare_totalizer))
+
+
+# Setting Difference == 0 for First Occurance
+processed_logs$G1_diff[nrow(processed_logs)]<- 0 
+processed_logs$G1_kwh_diff[nrow(processed_logs)]<-0
+processed_logs$F1_diff[nrow(processed_logs)]<-0
+
+
+
 ## Function to process and correct totalizer values
 ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   # Quoting variables in function 
@@ -153,19 +171,19 @@ ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   total_diff <- enquo(total_diff)
   new_name <- quo_name(new_name)
   substitution_method <- quo_name(substitution_method)
-
+  
   # Correcting for zeros in the totalizer columnn  
   logs<- logs%>%
     mutate(!!new_name := case_when(!!totalizer ==0 ~ as.integer(0),
                                    !!total_diff < 0 ~ as.integer(0),
                                    TRUE ~ as.integer(!!total_diff)))
-
+  
   # Creating data substitution label (using same logic as above)
   logs <- logs%>%
-    mutate(!!substitution_method := case_when(!!totalizer ==0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
-                                              !!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
+    mutate(!!substitution_method := case_when(!!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               TRUE ~ "Totalizer Feasible"))
-
+                                              
+  
   return(logs)
 }
 
@@ -184,6 +202,7 @@ processed_logs <- ProcessLogs(processed_logs,engine_kwh,G1_kwh_diff, "G1_kwh","G
 
 # Flare flow 
 processed_logs<- ProcessLogs(processed_logs,flare_totalizer,F1_diff,'F1_flow','F1_flow_valid')
+
 ```
 
 ### Determining Flare Operational Status
@@ -196,12 +215,12 @@ FlareOperation <- function(logs,thermocouple,flare_flow){
   # Quoting variables 
   thermocouple <- enquo(thermocouple)
   flare_flow <- enquo(flare_flow)
-
+  
   # Determining if flare was operational 
   logs<- logs%>% 
     mutate(F1_oper = case_when(!!thermocouple >= 120 & !!thermocouple < 2000 ~ 'Operational',
                                !!thermocouple <= 120 | !!thermocouple > 2000 ~ 'Non-operational'))
-
+  
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
     mutate(F1_flow_op = case_when(F1_oper == 'Operational' ~ as.integer(F1_flow),
@@ -377,6 +396,25 @@ F1_gap_summary <- FlareSummary(processed_logs,F1_flow_valid)
 timestamp_gap_summary <- TimestampSummary(processed_logs,missing_timestamp)
 ```
 
+## Calculating Weighted Average CH4%
+
+```r
+### Calculating weighted average for CH4% 
+
+# Creating month/year column 
+processed_logs$Month <- as.yearmon(processed_logs$Date)
+
+# Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
+weighted_average <- processed_logs%>%
+  group_by(Month)%>%
+  summarise('Weighted Average CH4%' = weighted.mean(`Gas Analyzer 2 Location 1 CH4 (%)`,G1_flow,na.rm = TRUE))
+
+# Removing the month column from the main df
+processed_logs<- processed_logs%>%
+  select(-Month)
+
+```
+
 ## Writing Processed Logs to Excel
 
 ```r
@@ -385,116 +423,127 @@ timestamp_gap_summary <- TimestampSummary(processed_logs,missing_timestamp)
 
 # Writing processed dataframe to excel
 
-file_name = 'Madera 2022 Biogas Flow Summary.xlsx'
+file_name = 'Madera Biogas Flow Summary 11.28.22.xlsx'
 
 # Checking to see if file already exists 
 
 if(file.exists(file_name)==TRUE){
-
+  
   # If file already exists, remove the existing table and append the updated processed logs table 
   print('File Exists... Appending to existing file')
-
+  
   # Loading the excel file 
   wb <- loadWorkbook(file_name)
-
+  
   ### Adding tables to the excel sheet
-
-
+  
+  
   ## Processed Logs
   # Removing the existing table in the 'Biogas Flow tab'
   removeTable(wb,sheet = 'Biogas Flow',table = getTables(wb, 'Biogas Flow'))
-
+  
   # Adding the processed_logs dataframe to the Biogas Flow tab 
   writeDataTable(wb,sheet = 'Biogas Flow',processed_logs,colName = TRUE,tableName = 'Processed_Logs')
-
-
-
+  
+  ## CH4 Summary
+  # Removing the existing table in the 'Biogas Flow tab'
+  removeTable(wb,sheet = 'CH4 Summary',table = getTables(wb, 'CH4 Summary'))
+  
+  # Writing weighted_average dataframe to 'CH4 Summary' tab
+  writeDataTable(wb, sheet = 'CH4 Summary',weighted_average,colName = TRUE,tableName = 'CH4_Summary')
+  
+  
+  
   ## Engine Summary
   # Removing existing engine summary
   removeTable(wb,sheet = 'Engine Summary',table = getTables(wb, 'Engine Summary'))
 
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Engine Summary',G1_gap_summary,colName = TRUE, tableName = 'G1_Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
   writeFormula(wb, sheet = 'Engine Summary',startCol = 5, startRow = 2, x = G1_gap_summary$link)
-
-
-
+  
+  
+  
   ## Flare Summary
   # Removing existing flare summary
   removeTable(wb,sheet = 'Flare Summary',table = getTables(wb, 'Flare Summary'))
-
+  
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Flare Summary',F1_gap_summary,colName = TRUE, tableName = 'F1_Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
   writeFormula(wb, sheet = 'Flare Summary',startCol = 4, startRow = 2, x = F1_gap_summary$link)
-
-
-
+  
+  
+  
   ## Gap Summary 
   # Removing existing gap summary
   removeTable(wb,sheet = 'Gap Summary',table = getTables(wb, 'Gap Summary'))
-
+  
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Gap Summary',timestamp_gap_summary,colName = TRUE, tableName = 'Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
-  writeFormula(wb, sheet = 'Gap Summary',startCol = 4, startRow = 2, x = timestamp_gap_summary$link)
-
-
+  writeFormula(wb, sheet = 'Gap Summary',startCol = 6, startRow = 2, x = timestamp_gap_summary$link)
+  
+  
   # Saving workbook 
   saveWorkbook(wb,file_name,overwrite = TRUE)
-
-
+  
+  
 }else{
   # If the file doesnt exist, create a new file and append the processed logs table 
   print('File doesnt exist... Creating new file')
-
+  
   # Creating excel file
   wb<- createWorkbook(file_name)
-
+  
   # Creating sheets 
   sheet1<- addWorksheet(wb,sheetName = 'Biogas Flow')
   sheet2<- addWorksheet(wb,sheetName = 'Flow Summary')
   sheet3<- addWorksheet(wb,sheetName = 'Engine Summary')
   sheet4<- addWorksheet(wb,sheetName = 'Flare Summary')
   sheet5<- addWorksheet(wb,sheetName = 'Gap Summary')
-
+  sheet6<- addWorksheet(wb,sheetName = 'CH4 Summary')
+  
   # Writing processed_logs dataframe to 'Biogas Flow' tab
   writeDataTable(wb, sheet = sheet1,processed_logs,colName = TRUE,tableName = 'Processed_Logs')
-
+  
+  # Writing weighted_average dataframe to 'CH4 Summary' tab
+  writeDataTable(wb, sheet = sheet6,weighted_average,colName = TRUE,tableName = 'CH4_Summary')
+  
   ## Engine Summary
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Engine Summary',G1_gap_summary,colName = TRUE, tableName = 'G1_Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
   writeFormula(wb, sheet = 'Engine Summary',startCol = 5, startRow = 2, x = G1_gap_summary$link)
-
-
-
+  
+  
+  
   ## Flare Summary
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Flare Summary',F1_gap_summary,colName = TRUE, tableName = 'F1_Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
   writeFormula(wb, sheet = 'Flare Summary',startCol = 4, startRow = 2, x = F1_gap_summary$link)
-
-
-
+  
+  
+  
   ## Missing Timestamp Summary
   # Adding the gap_summary dataframe 
   writeDataTable(wb,sheet = 'Gap Summary',timestamp_gap_summary,colName = TRUE, tableName = 'Gap_Summary' )
-
+  
   # Adding the hyperlinks to the Gap Summary Table
-  writeFormula(wb, sheet = 'Gap Summary',startCol = 4, startRow = 2, x = timestamp_gap_summary$link)
-
-
-
-
-
-
+  writeFormula(wb, sheet = 'Gap Summary',startCol = 6, startRow = 2, x = timestamp_gap_summary$link)
+  
+  
+  
+  
+  
+  
   # Saving workbook 
   saveWorkbook(wb,file_name, overwrite = FALSE)
 }
