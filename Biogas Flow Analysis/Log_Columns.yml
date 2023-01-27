@@ -1,0 +1,22 @@
+# Organize file paths to raw logs .csv files 
+
+# Farm Name 
+# - New Column Name: Column Index
+
+Chaput:
+- G1_totalizer: 4
+- G1_kwh_totalizer: 6
+- flare_totalizer: 9
+- flare_temp: 11
+
+Madera: 
+- G1_totalizer: 5
+- G1_kwh_totalizer: 7
+- flare_totalizer: 19
+- flare_temp: 20
+- ch4_meter: 26
+
+
+
+
+
