@@ -84,7 +84,7 @@ ParseYAML <- function(farm){
 
 # Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
-cfg <- ParseYAML('INPUT FARM NAME HERE') ## Choose from the above names and input into ParseYAML(input farm name here)
+cfg <- ParseYAML('INSERT FARM NAME HERE')
 
 # Getting column headers
 column_names <- cfg[[1]]
@@ -117,6 +117,10 @@ DateTime<- function(logs){
 
 # Creating date_time variable
 merged_logs <- DateTime(merged_logs)
+
+# Removing any duplicate rows 
+merged_logs <- merged_logs%>%
+  distinct()
 
 
 # Sorting by date_time in descending order by date_time
@@ -199,10 +203,8 @@ rm(indexes,cfg,path)
 
 # Create list of totalizers 
 totalizer_list <- column_names[grepl('totalizer',column_names)]
-
-rm(column_names)
-
-
+print('Printing Totalizer Columns...')
+print(totalizer_list)
 
 
 ### Processing merged logs
@@ -243,13 +245,15 @@ ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   
   # Correcting for zeros in the totalizer columnn  
   logs<- logs%>%
-    mutate(!!new_name := case_when(!!totalizer ==0 ~ as.integer(0),
+    mutate(!!new_name := case_when(!!totalizer == 0 ~ as.integer(0),
                                    !!total_diff < 0 ~ as.integer(0),
+                                   !!total_diff > 1000000 ~ as.integer(0),
                                    TRUE ~ as.integer(!!total_diff)))
   
   # Creating data substitution label, any time there is a negative totalizer difference 
   logs <- logs%>%
     mutate(!!substitution_method := case_when(!!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
+                                              !!total_diff > 1000000 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               TRUE ~ "Totalizer Feasible"))
                                               
   
@@ -485,7 +489,7 @@ gc()
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Output file name
-file_name = 'INSERT NEW FILE NAME.xlsx' ### Change this as needed
+file_name = 'INSERT FILE NAME HERE.xlsx' ### Change this as needed
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
@@ -552,7 +556,7 @@ ToExcel <- function(file,tables_list){
     # If file already exists
     print('File already exists...')
     
-    user_prompt <- paste('Do you want to overwrite file:',file_name,'(Y/N)',sep = ' ')
+    user_prompt <- paste('Do you want to overwrite file:',file_name,'(Y/N) ',sep = ' ')
     
     # Getting user input
     user_input <- readline(prompt = user_prompt)
@@ -568,7 +572,8 @@ ToExcel <- function(file,tables_list){
       print('Overwriting file...')
       
       # Loading existing workbook
-      wb <- createWorkbook(file_name)
+      wb <- loadWorkbook(file_name)
+      
       
       # Iterate through list of dataframes in list and create worksheets/add data tables
       for (i in 1:length(data_tables)){
@@ -581,11 +586,11 @@ ToExcel <- function(file,tables_list){
         # Get excel table name
         table_name <- gsub(' ','_',df_name)
         
-        # Add excel sheet for data tables
-        sheet1 <- addWorksheet(wb,sheetName = df_name)
+        # Removing the existing table in the 'Biogas Flow tab'
+        removeTable(wb,sheet = df_name,table = getTables(wb, df_name))
         
         # Add data table to sheet 
-        writeDataTable(wb, sheet = sheet1,df,colName = TRUE,tableName = table_name)
+        writeDataTable(wb, sheet = df_name,df,colName = TRUE,tableName = table_name)
         
         # Writing hyperlink formulas for gap summary
         if (isTRUE(grepl('Gap',df_name,ignore.case = TRUE))){
@@ -597,7 +602,7 @@ ToExcel <- function(file,tables_list){
           link <- df$link
           
           # Adding the hyperlinks to the Gap Summary Table
-          writeFormula(wb, sheet = sheet1,startCol = link_num , startRow = 2, x = link)
+          writeFormula(wb, sheet = df_name,startCol = link_num , startRow = 2, x = link)
         }
       }
       
@@ -658,4 +663,6 @@ ToExcel <- function(file,tables_list){
 ToExcel(file_name,tables)
 
 
+# Restarting R session to clear memory
+.rs.restartR()
 

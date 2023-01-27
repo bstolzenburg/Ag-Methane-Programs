@@ -10,8 +10,11 @@ Chaput:
 - flare_temp: 11
 
 Madera: 
+- G1_sn: 3
 - G1_totalizer: 5
 - G1_kwh_totalizer: 7
+- G2_kwh_totalizer: 14
+- flare_sn: 17
 - flare_totalizer: 19
 - flare_temp: 20
 - ch4_meter: 26
