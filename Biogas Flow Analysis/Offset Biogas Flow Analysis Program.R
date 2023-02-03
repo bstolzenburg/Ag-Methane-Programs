@@ -84,7 +84,8 @@ ParseYAML <- function(farm){
 
 # Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
-cfg <- ParseYAML('INSERT FARM NAME HERE')
+
+cfg <- ParseYAML('INPUT FARM NAME HERE')                                     ####### INPUT #######
 
 # Getting column headers
 column_names <- cfg[[1]]
@@ -95,6 +96,22 @@ indexes <- cfg[[2]]
 
 
 # Cleaning up Merged Logs -----
+
+# Adding degrees symbol to column headers
+colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
+
+## Saving original headers
+
+# Saving the original column names as 'headers' variable
+og_headers <- colnames(merged_logs)
+
+# Get number of headers in original dataframe 
+# -1 to exclude date_time column from original headers
+max_header <- as.integer(length(og_headers))
+
+### Cleaning up column headers
+
+
 
 ### Formatting Dates and Times and sorting dataframe
 
@@ -133,30 +150,20 @@ merged_logs <- merged_logs%>%
 
 # Function to clean column headers
 
-### Cleaning up column headers
-
-# Adding degrees symbol to column headers
-colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
-
-## Saving original headers
-
-# Saving the original column names as 'headers' variable
-headers <- colnames(merged_logs)
-
-# Get number of headers in original dataframe 
-# -1 to exclude date_time column from original headers
-max_header <- as.integer(length(headers)-1)
-
 
 # Function to clean up columns
 CleanCols <- function(index,names){
+  
+  # Creating headers variable
+  headers <- colnames(merged_logs)
+  
   ## Creating dataframe of the headers, along with corresponding index
   col_index <- 1:length(headers)
   
   log_columns <- data.frame(col_index,headers)
   
   # Creating list of headers to be changed 
-  indexes_to_change <- index                    
+  indexes_to_change <- index
   
   # Creating dataframe of the headers to be changed
   change_headers <- data.frame(indexes_to_change)
@@ -166,7 +173,7 @@ CleanCols <- function(index,names){
     filter(col_index %in% change_headers$indexes_to_change)
   
   # Creating datafrmae of new names (Input the new names in the order they appear in the console)
-  new_names <- names       
+  new_names <- names 
   
   # Adding the new names to the log_columns dataframe 
   log_columns$new_name <- new_names 
@@ -194,7 +201,6 @@ merged_logs <- CleanCols(indexes,column_names)
 
 # Cleaning up directory 
 rm(indexes,cfg,path)
-
 
 
 
@@ -489,7 +495,7 @@ gc()
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Output file name
-file_name = 'INSERT FILE NAME HERE.xlsx' ### Change this as needed
+file_name = 'INSERT FILE NAME HERE.xlsx'                                              ####### INPUT #######
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
@@ -497,7 +503,7 @@ names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
 
 # Creating list of dataframes to include as tables in the results spreadsheet
 # 'Excel Sheet Name' = 'Dataframe Name'
-data_tables <- list('Processed Logs'= 'processed_logs',
+data_tables <- list('Processed Logs'= 'processed_logs',                               ####### INPUT #######
                     'Gap Summary' = 'timestamp_gap_summary',
                     'Engine Gap Summary' = "G1_gap_summary",
                     'Flare Gap Summary' = 'flare_gap_summary')
