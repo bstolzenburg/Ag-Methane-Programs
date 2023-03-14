@@ -363,7 +363,7 @@ processed_logs<-processed_logs%>%
 
 # Dropping columns from the final dataframe
 processed_logs<- processed_logs%>%
-  select(-c('time_diff','date_time'))
+  select(-c('time_diff'))
 
 
 
@@ -473,14 +473,14 @@ timestamp_gap_summary <- TimestampSummary(processed_logs,missing_timestamp)
 
 ### Returning column headers to their original values
 for(x in 1:max_header){
-  colnames(processed_logs)[x]<- headers[x]
+  colnames(processed_logs)[x]<- og_headers[x]
 }
 
 
 # Cleaning up Global Directory ----
 
 # Removing items from global directory
-rm(headers,max_header,totalizer_list,x)
+rm(og_headers,max_header,totalizer_list,x)
 
 # Garbage Clean
 gc()
@@ -667,8 +667,4 @@ ToExcel <- function(file,tables_list){
 
 # Writing results to excel
 ToExcel(file_name,tables)
-
-
-# Restarting R session to clear memory
-.rs.restartR()
 
