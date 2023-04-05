@@ -8,8 +8,10 @@
 ## Columns must be put in the order that they appear in the logs 
 
 Chaput:
+- G1_sn: 3
 - G1_totalizer: 4
 - G1_kwh_totalizer: 6
+- flare_sn: 8
 - flare_totalizer: 9
 - flare_temp: 11
 
@@ -38,6 +40,20 @@ Four Hills:
 - boiler_totalizer: 12
 - boiler_temp: 16
 - flare_temp_avg: 17
+
+Hanford:
+- G1_totalizer: 5
+- G1_kwh_totalizer: 7
+- flare_totalizer: 12
+- flare_temp: 13
+- flare_temp_avg: 14
+- G2_kwh_totalizer: 19
+- G2_totalizer: 23
+- G3_kwh_totalizer: 27
+- G3_totalizer: 31
+
+
+
 
 
 

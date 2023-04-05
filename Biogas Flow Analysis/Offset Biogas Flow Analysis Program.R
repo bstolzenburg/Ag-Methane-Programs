@@ -102,8 +102,13 @@ colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
 
 ## Saving original headers
 
+# Correcting for duplicate header names 
+colnames(merged_logs) <- tidy_names(colnames(merged_logs),syntactic = FALSE)
+
 # Saving the original column names as 'headers' variable
 og_headers <- colnames(merged_logs)
+
+
 
 # Get number of headers in original dataframe 
 # -1 to exclude date_time column from original headers
@@ -314,6 +319,9 @@ FlareOperation <- function(logs,thermocouple,flare_flow){
   thermocouple <- enquo(thermocouple)
   flare_flow <- enquo(flare_flow)
   
+  # Converting flare flow to numeric
+  flare_flow <- as.numeric(flare_flow)
+  
   # Determining if flare was operational based on temperature
   logs<- logs%>% 
     mutate(flare_oper = case_when(!!thermocouple >= 120 & !!thermocouple < 2000 ~ 'Operational',
@@ -321,10 +329,10 @@ FlareOperation <- function(logs,thermocouple,flare_flow){
   
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
-    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.integer(flare_flow),
-                                  TRUE ~ as.integer(0)))%>%
-    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.integer(flare_flow),
-                                     TRUE ~ as.integer(0)))
+    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ !!flare_flow,
+                                  TRUE ~ 0))%>%
+    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ !!flare_flow,
+                                     TRUE ~ 0))
   return(logs)
 }
 
