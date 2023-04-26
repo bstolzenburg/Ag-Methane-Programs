@@ -14,6 +14,7 @@
 # 1.3 - Changed the format of the date column so excel will recognize as a date 
 # 1.4 - Added function to automatically set working directory regardless of user
 # 1.5 - Removed Gallo from list of farms to QA
+# 1.6 - Removed 'culled' version of Four Hills and Hanford
 
 
 
@@ -112,12 +113,7 @@ def main():
         file_path = os.path.join(SetDirectory(),file_name)
 
         # Creating csv names
-
-        # Adding in the farms that need 'culled' added to the file path 
-        if name == 'Verweyhanford' or name == 'fourhills':
-            csv = file_name + '_2023_merged_culled.CSV'
-        else:
-            csv = file_name + '_2023_merged.CSV'
+        csv = file_name + '_2023_merged.CSV'
         
         # creating raw quick_qa name 
         quick_qa = 'log_quick_qa_' + name + '.xlsx'
