@@ -314,30 +314,28 @@ for (totalizer in totalizer_list){
 rm(diff_name,new_name,sub_method,totalizer)
 
 ## Flare Operational Activity
-FlareOperation <- function(logs,thermocouple,flare_flow){
+FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Quoting variables 
-  thermocouple <- enquo(thermocouple)
+  temp <- enquo(temp)
+  temp_avg <- enquo(temp_avg)
   flare_flow <- enquo(flare_flow)
-  
-  # Converting flare flow to numeric
-  flare_flow <- as.numeric(flare_flow)
   
   # Determining if flare was operational based on temperature
   logs<- logs%>% 
-    mutate(flare_oper = case_when(!!thermocouple >= 120 & !!thermocouple < 2000 ~ 'Operational',
-                               !!thermocouple <= 120 | !!thermocouple > 2000 ~ 'Non-operational'))
+    mutate(flare_oper = case_when((!!temp >= 120 | !!temp_avg >=120) & (!!temp < 2000 | !!temp_avg < 2000) ~ 'Operational',
+                                  (!!temp <= 120 & !!temp_avg <= 120) | (!!temp > 2000 & !!temp_avg > 2000) ~ 'Non-operational'))
   
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
-    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ !!flare_flow,
-                                  TRUE ~ 0))%>%
-    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ !!flare_flow,
-                                     TRUE ~ 0))
+    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ !!flare_flow*1,
+                                     TRUE ~ !!flare_flow*0))%>%
+    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ !!flare_flow*1,
+                                        TRUE ~ !!flare_flow*0))
   return(logs)
 }
 
 # Processing operational/non-operational flare flow 
-processed_logs<-FlareOperation(processed_logs,flare_temp,flare_flow)
+processed_logs<-FlareOperation(processed_logs,flare_temp,flare_temp_avg,as.numeric(flare_flow))
 
 
 
