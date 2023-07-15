@@ -22,10 +22,10 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 
 
 # Defining global variables for InfluxDB Client Information
-token = "SYtLJJ1kyo22beq6muIrZsu8fYUeOaz-jgvJeOSG0VQdlnhJnxlo8Q6HhM_cqZMadG1SRtQxckSxENq_4kICyQ=="
-org = "Ag Methane"
+token = "NWOZ5qCZfqbATl6uft4duOf0HoGMlNDV4P8uw5nupA4A2yipo6_Qyi4a4Y9hli8oeT5sQf4tdgdVFa9pDcrFIA=="
+org = "AgMethaneAdvisors"
 bucket = "Gas Flow Data" # Change this according to the intended InfluxDB bucket
-url = 'http://localhost:8086'
+url = 'https://us-central1-1.gcp.cloud2.influxdata.com'
 
 
 
