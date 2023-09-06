@@ -1,10 +1,7 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 7.21.23
+# 9.6.23
 
-# Madera Updates
-## Added section to pad missing rows and get average flow data across gaps 
-## Added section to fill in missing ch4 readings with rolling average
 
 # Program to process biogas flow logs and output .xlsx results
 
@@ -89,7 +86,7 @@ ParseYAML <- function(farm){
 # Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
 
-cfg <- ParseYAML('Madera')                                     ####### INPUT 
+cfg <- ParseYAML('INPUT FARM NAME HERE FROM ABOVE LIST')                                     ####### INPUT 
 
 # Getting column headers
 column_names <- cfg[[1]]
@@ -104,18 +101,18 @@ indexes <- cfg[[2]]
 # Adding degrees symbol to temperature column headers
 colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
 
-## Saving original headers to be applied at end of program
+## Saving original headers to be re-applied at end of program
 
 # Saving the original column names as 'headers' variable
 og_headers <- colnames(merged_logs)
 
 # Get number of headers in original dataframe 
-# -1 to exclude date_time column from original headers
 max_header <- as.integer(length(og_headers))
 
-### Cleaning up column headers ----
 
 
+
+## Cleaning up column headers ----
 
 ## Formatting Dates and Times and sorting dataframe ----
 
@@ -139,16 +136,17 @@ DateTime<- function(logs){
 # Creating date_time variable
 merged_logs <- DateTime(merged_logs)
 
-# Removing any duplicate rows 
+# Removing any duplicate rows based on unique date_time column
 merged_logs <- merged_logs%>%
   distinct()
 
 
-# Sorting by date_time in descending order by date_time
+# Sorting by date_time in descending order
 merged_logs <- merged_logs%>%
   arrange(desc(date_time))
 
-# Cleaning Gas Log Column Headers ---- 
+
+## Cleaning Gas Log Column Headers ---- 
 
 # Function to clean column headers
 
@@ -210,12 +208,13 @@ rm(indexes,cfg,path)
 # Processing Gas Logs -----
 
 # Create list of totalizers 
+## Filtering updated column names for 'totalizer' 
 totalizer_list <- column_names[grepl('totalizer',column_names)]
 print('Printing Totalizer Columns...')
 print(totalizer_list)
 
 
-### Processing merged logs
+## Initial Process of merged logs ----
 
 TotalizerDiff <- function(merged_logs,totalizer_list){
   # Getting first timestamp
@@ -238,12 +237,14 @@ TotalizerDiff <- function(merged_logs,totalizer_list){
   return(processed_logs)
 }
 
+# Calling function
 processed_logs <- TotalizerDiff(merged_logs,totalizer_list)
 
 
 
 
 ## Processing Totalizer Values ----
+
 ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   # Quoting variables in function 
   totalizer <- enquo(totalizer)
@@ -290,7 +291,7 @@ for (totalizer in totalizer_list){
     
   }else{
     
-    # Creating name for difference column
+    # Creating name for flow totalizer difference column
     diff_name <-paste(totalizer,'diff',sep = '_')
     
     # Creating flow variable name
@@ -302,7 +303,7 @@ for (totalizer in totalizer_list){
     
   }
   
-  # Calling ProcessLogs function creating new variable
+  # Calling ProcessLogs function creating new variables for totalizer differences 
   processed_logs <- ProcessLogs(processed_logs,get(totalizer),get(diff_name),new_name,sub_method)
   
   
@@ -366,7 +367,7 @@ processed_logs<- processed_logs%>%
 
 
 
-## Creating Gap Summaries ----
+## Gap Summaries ----
 
 ## Funciton to create a gap summary for engines
 EngineSummary <- function(logs,device_flow_valid,device_kwh_valid){
@@ -425,7 +426,7 @@ FlareSummary <- function(logs,device_flow_valid){
 
 
 
-### Creating gap summaries 
+### Creating gap summaries ---- 
 
 ## Engine 
 G1_gap_summary <- EngineSummary(processed_logs,G1_flow_valid,G1_kwh_valid)
@@ -455,9 +456,6 @@ processed_logs_filled <- processed_logs_filled%>%
 # Replacing NA's in the Date and Time columns 
 processed_logs_filled$Date <- as.Date(processed_logs_filled$date_time)
 processed_logs_filled$Time <- format(processed_logs_filled$date_time,format = "%H:%M:%S" )
-
-
-
 
 
 
@@ -502,7 +500,7 @@ processed_logs <- processed_logs_filled
 
 
 
-## Creating gap_summary for filled timestamps --------
+### Creating gap_summary for filled timestamps --------
 
 # Function to create gap summary for missing timestamps 
 GapSummary <- function(logs,missing_timestamp){
@@ -535,60 +533,61 @@ GapSummary <- function(logs,missing_timestamp){
 flow_gap_summary <- GapSummary(processed_logs,missing_timestamp)
 
 
+# UNCOMMENT FOLLOWING SECTION IF USING CONTINUOUS CH4 ANALYZER
 
-# Weighted CH4 % Calculations ----
-
-# Filling in missing CH4 values for empty columns
-processed_logs$ch4_meter[processed_logs$ch4_meter ==0]<- NA
-
-# Calculating rolling mean window of 7 days before the timestamp
-roll_mean_window <- 168 * (60 / 15)  # Window size: 168 hours = 4 * (60 minutes / 15 minutes)
-
-## Creating ch4_sub column to calculate rolling average for missing ch4_meter readings -------
-processed_logs <- processed_logs%>%
-  
-  # Create ch4_substitution label
-  mutate(ch4_substitution = ifelse(is.na(ch4_meter),
-                          "CH4 Reading Substituted",
-                          "No Substitution"))%>%
-  # Substitute NA CH4 readings
-  mutate(ch4_sub = ifelse(is.na(ch4_meter),
-                          rollmean(ch4_meter, k = roll_mean_window, align ='right',na.rm = TRUE),
-                          ch4_meter))
-
-
-## Creating Gap Summary for CH4 Substitution
-Ch4_gap_summary <- processed_logs%>%
-  # Adding row numbers so hyperlinks can be created
-  mutate(row_numbers <<- seq.int(nrow(processed_logs))+1)%>%
-  
-  # Creating hyperlink string to link to processed logs "Date" column
-  mutate(link = makeHyperlinkString(sheet = 'Processed Logs',
-                                    text = 'Link to Processed_Logs',
-                                    row = row_numbers, 
-                                    col = 1))%>%
-  
-  # Filtering for instances where ch4_substitution occurred
-  filter(ch4_substitution != 'No Substitution')%>%
-  
-  # Selecting columns
-  select(Date,Time,ch4_meter,ch4_sub,link)
-  
-
-
-## Calculating weighted average for CH4% --------
-
-# Creating month/year column 
-processed_logs$Month <- as.yearmon(processed_logs$Date)
-
-# Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
-weighted_average <- processed_logs%>%
-  group_by(Month)%>%
-  summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,G1_flow,na.rm = TRUE)/100)
-
-# Removing the month column from the processed_logs df
-processed_logs<- processed_logs%>%
-  select(-Month)
+# # Weighted CH4 % Calculations ----
+# 
+# # Filling in missing CH4 values for empty columns
+# processed_logs$ch4_meter[processed_logs$ch4_meter ==0]<- NA
+# 
+# # Calculating rolling mean window of 7 days before the timestamp
+# roll_mean_window <- 168 * (60 / 15)  # Window size: 168 hours = 4 * (60 minutes / 15 minutes)
+# 
+# ## Creating ch4_sub column to calculate rolling average for missing ch4_meter readings -------
+# processed_logs <- processed_logs%>%
+#   
+#   # Create ch4_substitution label
+#   mutate(ch4_substitution = ifelse(is.na(ch4_meter),
+#                           "CH4 Reading Substituted",
+#                           "No Substitution"))%>%
+#   # Substitute NA CH4 readings
+#   mutate(ch4_sub = ifelse(is.na(ch4_meter),
+#                           rollmean(ch4_meter, k = roll_mean_window, align ='right',na.rm = TRUE),
+#                           ch4_meter))
+# 
+# 
+# ## Creating Gap Summary for CH4 Substitution
+# Ch4_gap_summary <- processed_logs%>%
+#   # Adding row numbers so hyperlinks can be created
+#   mutate(row_numbers <<- seq.int(nrow(processed_logs))+1)%>%
+#   
+#   # Creating hyperlink string to link to processed logs "Date" column
+#   mutate(link = makeHyperlinkString(sheet = 'Processed Logs',
+#                                     text = 'Link to Processed_Logs',
+#                                     row = row_numbers, 
+#                                     col = 1))%>%
+#   
+#   # Filtering for instances where ch4_substitution occurred
+#   filter(ch4_substitution != 'No Substitution')%>%
+#   
+#   # Selecting columns
+#   select(Date,Time,ch4_meter,ch4_sub,link)
+#   
+# 
+# 
+# ## Calculating weighted average for CH4% --------
+# 
+# # Creating month/year column 
+# processed_logs$Month <- as.yearmon(processed_logs$Date)
+# 
+# # Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
+# weighted_average <- processed_logs%>%
+#   group_by(Month)%>%
+#   summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,G1_flow,na.rm = TRUE)/100)
+# 
+# # Removing the month column from the processed_logs df
+# processed_logs<- processed_logs%>%
+#   select(-Month)
 
 
 
@@ -596,7 +595,7 @@ processed_logs<- processed_logs%>%
 
 ## Formatting date for excel ----
 
-# Removing date_time column 
+# Removing date_time column so excel will format date/time correctly
 processed_logs <- processed_logs%>%
   select(- date_time)
 
@@ -613,9 +612,6 @@ for(x in 1:max_header){
   colnames(processed_logs)[x]<- og_headers[x]
 }
 
-processed_logs%>%
-  summarize(Total = sum(G1_flow))
-
 
 # Cleaning up Global Directory ----
 
@@ -625,13 +621,16 @@ rm(og_headers,max_header,totalizer_list,x,processed_logs_filled,variables_list)
 # Garbage Clean
 gc()
 
+
+
+
 # Writing Results to Excel ----
 
 # Resetting working directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Output file name
-file_name = 'Madera Biogas Flow Summary_WORKING.xlsx'                                              ####### INPUT 
+file_name = 'INPUT FILE NAME_WORKING.xlsx'                                   ####### INPUT 
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
@@ -639,18 +638,15 @@ names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
 
 # Creating list of dataframes to include as tables in the results spreadsheet
 # 'Excel Sheet Name' = 'Dataframe Name'
-data_tables <- list('Processed Logs'= 'processed_logs',                               ####### INPUT
+data_tables <- list('Processed Logs'= 'processed_logs',                         ####### INPUT
                     'Gap Summary' = 'flow_gap_summary',
                     'Engine Gap Summary' = "G1_gap_summary",
-                    'Flare Gap Summary' = 'flare_gap_summary',
-                    'CH4 Fractions' = 'weighted_average',
-                    'CH4 Gap Summary' = 'Ch4_gap_summary')
+                    'Flare Gap Summary' = 'flare_gap_summary')
 
 # Calling function for all dataframes in list 
 
 # Function to write results tables to excel spreadsheet
 ToExcel <- function(file,tables_list){
-  
   
   # Check if file exists
   if(file.exists(file)== FALSE){
