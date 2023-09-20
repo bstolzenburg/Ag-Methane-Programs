@@ -22,10 +22,9 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 
 
 # Defining global variables for InfluxDB Client Information
-token = "NWOZ5qCZfqbATl6uft4duOf0HoGMlNDV4P8uw5nupA4A2yipo6_Qyi4a4Y9hli8oeT5sQf4tdgdVFa9pDcrFIA=="
-org = "AgMethaneAdvisors"
-bucket = "Gas Flow Data" # Change this according to the intended InfluxDB bucket
-url = 'https://us-central1-1.gcp.cloud2.influxdata.com'
+token = "C5PNIgNSlW86reiYOuXrEkGc0c-FgTpzdh0zB13FoRWmhBZUhgoXunGAlAqiPrhdY18nvxgD2pkP2dQX0PnsPQ=="
+org = "Ag Methane"
+url = 'http://localhost:8086/'
 
 
 
@@ -63,7 +62,7 @@ def main():
         for device,df in logs_dict.items():
             print('Uploading ',device,' logs')
             print('')
-            InfluxInput(df,device)
+            InfluxInput(df,device,farm)
             print('')
 
 
@@ -179,16 +178,10 @@ def ProcessLogs(farm,path):
     return(logs)
     
 
-
-
-
-
-
-
 ### Defining funciton to upload pandas dataframe to InfluxDB Server
 ## Accepts the name of the dataframe containing the data to be input,the name of the measurement (i.e. flare/engine/electricity) and the tag(i.e. project name)
 
-def InfluxInput(df,measurement):
+def InfluxInput(df,measurement,bucket):
 
     # Setting the date_time column as the inplace index
     df.set_index(['Timestamp'],inplace = True)
