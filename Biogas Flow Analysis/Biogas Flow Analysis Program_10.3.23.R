@@ -1,6 +1,6 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 10.3.23
+# 10.13.23
 
 
 # Program to process biogas flow logs and output .xlsx results
@@ -312,32 +312,30 @@ for (totalizer in totalizer_list){
 rm(diff_name,new_name,sub_method,totalizer)
 
 ## Flare Operational Flow ----
-# Processing operational/non-operational flare flow again based on new flare_flow numbers 
 
 ## Flare Operational Activity
-FlareOperation <- function(logs,thermocouple,flare_flow){
+FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Quoting variables 
-  thermocouple <- enquo(thermocouple)
+  temp <- enquo(temp)
+  temp_avg <- enquo(temp_avg)
   flare_flow <- enquo(flare_flow)
   
-  # Determining if flare was operational based on temperature
+  # Determining if flare was operational based on temperature (avg temp & actual temp)
   logs<- logs%>% 
-    mutate(flare_oper = case_when(!!thermocouple >= 120  ~ 'Operational',
-                                  !!thermocouple < 120 ~ 'Non-operational',
-                                  TRUE ~ 'Non-operational'))
+    mutate(flare_oper = case_when((!!temp >= 120 | !!temp_avg >=120) & (!!temp < 2000 | !!temp_avg < 2000) ~ 'Operational',
+                                  (!!temp <= 120 & !!temp_avg <= 120) | (!!temp > 2000 & !!temp_avg > 2000) ~ 'Non-operational'))
   
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
-    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.numeric(flare_flow),
-                                     TRUE ~ 0))%>%
-    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.numeric(flare_flow),
-                                        TRUE ~ 0))
+    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.integer(flare_flow),
+                                     TRUE ~ as.integer(0)))%>%
+    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.integer(flare_flow),
+                                        TRUE ~ as.integer(0)))
   return(logs)
 }
-# Differentiating flare operation
-processed_logs<-FlareOperation(processed_logs,flare_temp,flare_flow)
 
-
+# Processing operational/non-operational flare flow 
+processed_logs<-FlareOperation(processed_logs,flare_temp,flare_temp_avg,flare_flow)
 
 
 
@@ -424,6 +422,33 @@ FlareSummary <- function(logs,device_flow_valid){
   
 }
 
+# Function to create gap summary for missing timestamps 
+TimestampSummary <- function(logs,missing_timestamp){
+  # Quoting variables 
+  missing_timestamp <- enquo(missing_timestamp)
+  
+  # Filtering processed logs where there are missing timestamps
+  gap_summary <- logs%>%
+    
+    # Adding row numbers so hyperlinks can be created
+    mutate(row_numbers = seq.int(nrow(logs))+1)%>%
+    
+    # Filtering for invalid totalizer differences
+    filter(!!missing_timestamp != 0)%>%
+    
+    # Creating hyperlink string to link to processed logs 
+    mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
+    
+    # Selecting columns for gap summary 
+    ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
+    select(Date,Time,!!missing_timestamp,G1_totalizer_diff,G1_kwh_totalizer_diff,link)
+  
+  
+  
+  return(gap_summary)
+  
+}
+
 
 
 ### Creating gap summaries ---- 
@@ -434,8 +459,11 @@ G1_gap_summary <- EngineSummary(processed_logs,G1_flow_valid,G1_kwh_valid)
 ## Flare 
 flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 
+## Missing timestamps 
+timestamp_summary <- TimestampSummary(processed_logs,missing_timestamp)
 
-# UNCOMMENT FOLLOWING SECTION IF NEED TO PAD MISSING DATA (i.e. create empty rows)
+
+# UNCOMMENT FOLLOWING SECTION IF NEED TO PAD MISSING DATA (i.e. create empty rows for missing timestamps)
 
 # ## Padding Missing Data ----- 
 # 
@@ -534,6 +562,8 @@ flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 # flow_gap_summary <- GapSummary(processed_logs,missing_timestamp)
 
 
+
+
 # UNCOMMENT FOLLOWING SECTION IF USING CONTINUOUS CH4 ANALYZER
 
 # # Weighted CH4 % Calculations ----
@@ -617,7 +647,7 @@ for(x in 1:max_header){
 # Cleaning up Global Directory ----
 
 # Removing items from global directory
-rm(og_headers,max_header,totalizer_list,x,processed_logs_filled,variables_list)
+rm(og_headers,max_header,totalizer_list,x)
 
 # Garbage Clean
 gc()
@@ -639,9 +669,10 @@ names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
 
 # Creating list of dataframes to include as tables in the results spreadsheet
 # 'Excel Sheet Name' = 'Dataframe Name'
+
 # UPDATE AS NEEDED
 data_tables <- list('Processed Logs'= processed_logs,                         ####### INPUT
-                    'Gap Summary' = flow_gap_summary,
+                    'Gap Summary' = timestamp_summary,
                     'Engine Gap Summary' = G1_gap_summary,
                     'Flare Gap Summary' = flare_gap_summary)
 
