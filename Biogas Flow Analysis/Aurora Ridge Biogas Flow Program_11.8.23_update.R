@@ -240,6 +240,28 @@ TotalizerDiff <- function(merged_logs,totalizer_list){
 # Calling function
 processed_logs <- TotalizerDiff(merged_logs,totalizer_list)
 
+# Gap Analysis ----
+
+# Convert date to correct format for excel 
+processed_logs$Date <- mdy(processed_logs$Date)
+
+# Calculating the time difference based on date_time column
+processed_logs<-processed_logs%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
+
+
+
+# Creating a missing timestamp column (1 timestamp = 15 minutes)
+processed_logs<-processed_logs%>%
+  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
+                                       time_diff > 15 ~ time_diff/15,
+                                       is.na(time_diff)==TRUE ~ 0))
+
+
+# Dropping columns from the final dataframe
+processed_logs<- processed_logs%>%
+  select(-c('time_diff',))
+
 
 
 
@@ -254,15 +276,18 @@ ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   
   # Correcting for zeros in the totalizer columnn  
   logs<- logs%>%
-    mutate(!!new_name := case_when(!!totalizer == 0 ~ 0,
+    mutate(!!new_name := case_when(lead(!!totalizer) == 0 & !!totalizer !=0 ~ 0,
                                    !!total_diff < 0 ~ 0,
                                    !!total_diff > 1000000 ~ 0,
+                                   missing_timestamp !=0   ~ 0,
                                    TRUE ~ as.numeric(!!total_diff)))
   
-  # Creating data substitution label, any time there is a negative totalizer difference 
+  # Creating data substitution label, any time there is a negative totalizer difference, or if there is an extremely large difference, or difference from zero
   logs <- logs%>%
     mutate(!!substitution_method := case_when(!!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               !!total_diff > 1000000 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
+                                              lead(!!totalizer) == 0 & !!totalizer !=0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
+                                              missing_timestamp !=0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               TRUE ~ "Totalizer Feasible"))
                                               
   
@@ -311,7 +336,130 @@ for (totalizer in totalizer_list){
 
 rm(diff_name,new_name,sub_method,totalizer)
 
-## Flare Operational Activity
+
+
+
+# Totalizer Lag -----
+
+# Resetting working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+
+# Function to process for totalizer lag
+TotalizerLag <- function(logs, totalizer){
+  # Rearranging the logs in ascending order
+  logs <- logs%>%
+    arrange(date_time)
+  
+  # Reversing the order of the totalizer column
+  totalizer <- rev(totalizer)
+  
+  # Creating empty vector to track the lag counter
+  totalizer_lag <- vector()
+  
+  # Iterating through logs to identify and count totalizer lag
+  for (i in 1:nrow(logs)){
+    if (i != 1){
+      if (totalizer[i] == totalizer[i-1]){
+        totalizer_lag <- append(totalizer_lag,totalizer_lag[i-1]+1)
+      }else{
+        totalizer_lag <- append(totalizer_lag,0)
+      }
+    }else {
+      totalizer_lag <- append(totalizer_lag,0)
+    }
+    
+  }
+  
+  # Reversing the order of the lag counter
+  totalizer_lag <- rev(totalizer_lag)
+  
+  return(totalizer_lag)
+}
+
+## Correcting totalizer lag for engine ----
+
+# Creating totalizer lag column for engine
+processed_logs$engine_lag <- TotalizerLag(processed_logs,processed_logs$G1_totalizer)
+
+# Correcting totalizer lag for current timestamp so the average is calculated on the correct number of timestamps
+processed_logs$engine_lag <- ifelse(processed_logs$engine_lag == 0 & lead(processed_logs$engine_lag) !=0,
+                                    lead(processed_logs$engine_lag)+1,
+                                    processed_logs$engine_lag)
+
+# Correcting for totalizer lag by calculating average flow during lag
+engine_lag<- processed_logs%>%
+  select(date_time,G1_flow,engine_lag)%>%
+  filter(engine_lag !=0)%>%
+  mutate(average_flow = case_when(G1_flow != 0 ~ G1_flow/engine_lag,
+                                  TRUE ~ 0))
+
+# Crosschecking engine_lag 
+engine_lag_filt <- engine_lag%>%
+  filter(average_flow != 0)
+
+## Max gap was < 7 days so data substitution is not required
+
+## Correcting totalizer lag for flare ----
+
+# Creating totalizer lag column for flare
+processed_logs$flare_lag <- TotalizerLag(processed_logs,processed_logs$flare_totalizer)
+
+# Correcting totalizer lag for current timestamp so the average is calculated on the correct number of timestamps
+processed_logs$flare_lag <- ifelse(processed_logs$flare_lag == 0 & lead(processed_logs$flare_lag) !=0,
+                                   lead(processed_logs$flare_lag)+1,
+                                   processed_logs$flare_lag)
+
+# Correcting for totalizer lag by calculating average flow during lag, with threshold for 24 hours (96 minutes)
+flare_lag<- processed_logs%>%
+  select(date_time,flare_flow,flare_lag)%>%
+  filter(flare_lag !=0)%>%
+  mutate(average_flare_flow = case_when(flare_flow != 0 & flare_lag < 96 ~ flare_flow/flare_lag,
+                                  TRUE ~ 0))
+
+# Fill in zeros with NA so they can be filled down with average flow
+flare_lag_filled <- flare_lag%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))%>%
+  mutate(average_flare_flow = case_when(average_flare_flow == 0 & lag(time_diff) > 15 ~ 0,
+                                  average_flare_flow == 0 & lag(time_diff)== 15 & flare_lag <96 ~ NA, # Prevents timestamps with no flow from getting filled in from the previous value
+                                  flare_lag > 96 ~ 0,
+                                  TRUE ~ average_flare_flow))%>%
+  select(-time_diff)%>%
+  mutate(average_flare_flow = na.locf(average_flare_flow))
+
+
+
+
+# Merging the flare_lag_filled with processed_logs
+processed_logs_merged <- merge(processed_logs,flare_lag_filled[c('date_time','average_flare_flow')],
+                               by = 'date_time',all.x = TRUE)
+
+# Reverse order of processed_logs_merged
+processed_logs_merged <- map_df(processed_logs_merged,rev)
+
+# Replace processed_logs with processed_logs_merged
+processed_logs <- processed_logs_merged
+
+### Replace flare flow with calculated lag average where appropriate ----
+processed_logs <- processed_logs%>%
+  mutate(flare_flow = case_when(average_flare_flow !=0 & is.na(average_flare_flow)== FALSE ~ average_flare_flow,
+                                TRUE ~ flare_flow))
+
+## Adding data substitution labeling for flare lag substitution
+processed_logs <- processed_logs%>%
+  mutate(flare_flow_valid = case_when(average_flare_flow != 0 & flare_flow == average_flare_flow ~ 'Totalizer stuck for less than 24 hours, average flow substituted',
+                                      average_flare_flow == 0 & flare_flow != average_flare_flow ~ 'Totalizer stuck for more than 24 hours, zero BDE assumed for totalizer',
+                                      TRUE ~ flare_flow_valid))
+
+
+rm(processed_logs_merged)
+
+
+
+
+
+
+## Flare Operational Activity ----
 FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Quoting variables 
   temp <- enquo(temp)
@@ -321,13 +469,14 @@ FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Determining if flare was operational based on temperature (avg temp & actual temp)
   logs<- logs%>% 
     mutate(flare_oper = case_when((!!temp >= 120 | !!temp_avg >=120) & (!!temp < 2000 | !!temp_avg < 2000) ~ 'Operational',
-                                  (!!temp <= 120 & !!temp_avg <= 120) | (!!temp > 2000 & !!temp_avg > 2000) ~ 'Non-operational'))
+                                  (!!temp <= 120 & !!temp_avg <= 120) | (!!temp > 2000 & !!temp_avg > 2000) ~ 'Non-operational',
+                                  flare_flow_valid == 'Totalizer stuck for more than 24 hours, zero BDE assumed for totalizer' ~ 'Non-operational'))
   
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
-    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.integer(flare_flow),
+    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ flare_flow,
                                      TRUE ~ as.integer(0)))%>%
-    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.integer(flare_flow),
+    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ flare_flow,
                                         TRUE ~ as.integer(0)))
   return(logs)
 }
@@ -336,32 +485,6 @@ FlareOperation <- function(logs,temp,temp_avg,flare_flow){
 processed_logs<-FlareOperation(processed_logs,flare_temp,flare_temp_avg,flare_flow)
 
 
-
-
-
-
-
-# Gap Analysis ----
-
-# Convert date to correct format for excel 
-processed_logs$Date <- mdy(processed_logs$Date)
-
-# Calculating the time difference based on date_time column
-processed_logs<-processed_logs%>%
-  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
-
-
-
-# Creating a missing timestamp column (1 timestamp = 15 minutes)
-processed_logs<-processed_logs%>%
-  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
-                                       time_diff > 15 ~ time_diff/15,
-                                       is.na(time_diff)==TRUE ~ 0))
-
-
-# Dropping columns from the final dataframe
-processed_logs<- processed_logs%>%
-  select(-c('time_diff',))
 
 
 
@@ -449,6 +572,13 @@ TimestampSummary <- function(logs,missing_timestamp){
   
 }
 
+# Gap summary for totalizer lag substitutions
+flare_lag_summary <- processed_logs%>%
+  mutate(row_numbers = seq.int(nrow(processed_logs))+1)%>%
+  filter(flare_lag !=0)%>%
+  mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
+  select(Date,Time,flare_totalizer,flare_totalizer_diff,flare_flow,average_flare_flow,flare_lag,flare_flow_valid,link)
+
 
 
 ### Creating gap summaries ---- 
@@ -461,165 +591,6 @@ flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 
 ## Missing timestamps 
 timestamp_summary <- TimestampSummary(processed_logs,missing_timestamp)
-
-
-# UNCOMMENT FOLLOWING SECTION IF NEED TO PAD MISSING DATA (i.e. create empty rows for missing timestamps)
-
-# ## Padding Missing Data ----- 
-# 
-# ## Filling in missing timestamps with empty rows (NA) in the 'processed_logs_filled' df
-# 
-# # Merge 'Date' and 'Time' columns to create a single timestamp column
-# processed_logs$date_time <- as.POSIXct(paste(processed_logs$Date, processed_logs$Time), 
-#                                        format = "%Y-%m-%d %H:%M:%S",tz = "GMT")
-# 
-# 
-# 
-# # Padding dataset for missing timestamps 
-# processed_logs_filled <- pad(processed_logs,by = "date_time")
-# 
-# # Arrange in descending order 
-# processed_logs_filled <- processed_logs_filled%>%
-#   arrange(desc(date_time))
-# 
-# # Replacing NA's in the Date and Time columns 
-# processed_logs_filled$Date <- as.Date(processed_logs_filled$date_time)
-# processed_logs_filled$Time <- format(processed_logs_filled$date_time,format = "%H:%M:%S" )
-# 
-# 
-# 
-# # Filling NAs with most recent feasible totalizer value
-# 
-# ## Replace NAs with the most recent non-NA value in each column
-# processed_logs_filled$G1_flow <- na.locf(processed_logs_filled$G1_flow)
-# processed_logs_filled$G1_kwh <- na.locf(processed_logs_filled$G1_kwh)
-# processed_logs_filled$missing_timestamp <- na.locf(processed_logs_filled$missing_timestamp)
-# 
-# # Creating data substitution label
-# processed_logs_filled <- processed_logs_filled%>%
-#   mutate(flow_data_substitution = ifelse(missing_timestamp != 0,
-#                                      "Flow Data Gap Substituted",
-#                                      "No Substitution"))
-# 
-# # Function to recalculate the flow value for periods w/ missing timestamps by dividing the 
-# # most recent totalizer difference by the # of missing timestamps and applying it across the 
-# # range of missing rows
-# 
-# fill_flow_variables <- function(variables_list, df) {
-#   filled_df <- df
-#   
-#   for (var in variables_list) {
-#     filled_df <- filled_df %>%
-#       mutate_at(vars({{ var }}), ~ ifelse(missing_timestamp != 0,
-#                                           ./missing_timestamp,
-#                                           .))
-#   }
-#   
-#   return(filled_df)
-# }
-# 
-# # Define the list of variables to perform the operation on
-# variables_list <- c()                          #INPUT
-# 
-# # Call the function
-# processed_logs_filled <- fill_flow_variables(variables_list, processed_logs_filled)
-# 
-# # Replacing processed_logs with processed_logs_filled
-# processed_logs <- processed_logs_filled
-# 
-# 
-# 
-# ### Creating gap_summary for filled timestamps --------
-# 
-# # Function to create gap summary for missing timestamps 
-# GapSummary <- function(logs,missing_timestamp){
-#   # Quoting variables 
-#   missing_timestamp <- enquo(missing_timestamp)
-#   
-#   # Filtering processed logs where there are missing timestamps
-#   gap_summary <- logs%>%
-#     
-#     # Adding row numbers so hyperlinks can be created
-#     mutate(row_numbers = seq.int(nrow(logs))+1)%>%
-#     
-#     # Filtering for invalid totalizer differences
-#     filter(!!missing_timestamp != 0)%>%
-#     
-#     # Creating hyperlink string to link to processed logs 
-#     mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
-#     
-#     # Selecting columns for gap summary 
-#     ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
-#     select(Date,Time,G1_totalizer_diff,G1_flow,G1_kwh_totalizer_diff,G1_kwh,missing_timestamp,link)
-#   
-#   
-#   
-#   return(gap_summary)
-#   
-# }
-# 
-# # Creating flow gap substitution summary 
-# flow_gap_summary <- GapSummary(processed_logs,missing_timestamp)
-
-
-
-
-# UNCOMMENT FOLLOWING SECTION IF USING CONTINUOUS CH4 ANALYZER
-
-# # Weighted CH4 % Calculations ----
-# 
-# # Filling in missing CH4 values for empty columns
-# processed_logs$ch4_meter[processed_logs$ch4_meter ==0]<- NA
-# 
-# # Calculating rolling mean window of 7 days before the timestamp
-# roll_mean_window <- 168 * (60 / 15)  # Window size: 168 hours = 4 * (60 minutes / 15 minutes)
-# 
-# ## Creating ch4_sub column to calculate rolling average for missing ch4_meter readings -------
-# processed_logs <- processed_logs%>%
-#   
-#   # Create ch4_substitution label
-#   mutate(ch4_substitution = ifelse(is.na(ch4_meter),
-#                           "CH4 Reading Substituted",
-#                           "No Substitution"))%>%
-#   # Substitute NA CH4 readings
-#   mutate(ch4_sub = ifelse(is.na(ch4_meter),
-#                           rollmean(ch4_meter, k = roll_mean_window, align ='right',na.rm = TRUE),
-#                           ch4_meter))
-# 
-# 
-# ## Creating Gap Summary for CH4 Substitution
-# Ch4_gap_summary <- processed_logs%>%
-#   # Adding row numbers so hyperlinks can be created
-#   mutate(row_numbers <<- seq.int(nrow(processed_logs))+1)%>%
-#   
-#   # Creating hyperlink string to link to processed logs "Date" column
-#   mutate(link = makeHyperlinkString(sheet = 'Processed Logs',
-#                                     text = 'Link to Processed_Logs',
-#                                     row = row_numbers, 
-#                                     col = 1))%>%
-#   
-#   # Filtering for instances where ch4_substitution occurred
-#   filter(ch4_substitution != 'No Substitution')%>%
-#   
-#   # Selecting columns
-#   select(Date,Time,ch4_meter,ch4_sub,link)
-#   
-# 
-# 
-# ## Calculating weighted average for CH4% --------
-# 
-# # Creating month/year column 
-# processed_logs$Month <- as.yearmon(processed_logs$Date)
-# 
-# # Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
-# weighted_average <- processed_logs%>%
-#   group_by(Month)%>%
-#   summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,G1_flow,na.rm = TRUE)/100)
-# 
-# # Removing the month column from the processed_logs df
-# processed_logs<- processed_logs%>%
-#   select(-Month)
-
 
 
 # Cleaning up Final Dataframe ----
@@ -661,7 +632,7 @@ gc()
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Output file name
-file_name = 'Aurora Ridge 2022 Biogas Flow Analysis_update_10.13.23_FLARE.xlsx'                                   ####### INPUT 
+file_name = 'Aurora Ridge 2022 Biogas Flow Analysis_update_11.8.23.xlsx'                                   ####### INPUT 
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
