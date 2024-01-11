@@ -1,7 +1,7 @@
 # Gas Log QA Script
 
 # Version 1.5
-# 11/15/22
+# 1.4.23
 # Bryan Stolzenburg (Ag Methane Advisors)
 
 # Iterate through list of farms
@@ -113,7 +113,7 @@ def main():
         file_path = os.path.join(SetDirectory(),file_name)
 
         # Creating csv names
-        csv = file_name + '_2023_merged.CSV'
+        csv = file_name + '_2024_merged.CSV'
         
         # creating raw quick_qa name 
         quick_qa = 'log_quick_qa_' + name + '.xlsx'
