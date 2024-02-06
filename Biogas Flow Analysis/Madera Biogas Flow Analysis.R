@@ -1,10 +1,11 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 7.21.23
+# 1.11.24
 
 # Madera Updates
 ## Added section to pad missing rows and get average flow data across gaps 
 ## Added section to fill in missing ch4 readings with rolling average
+## Added to weighted CH4 calculation code to include flare flow during overhall in 5/2023
 
 # Program to process biogas flow logs and output .xlsx results
 
@@ -581,10 +582,16 @@ Ch4_gap_summary <- processed_logs%>%
 # Creating month/year column 
 processed_logs$Month <- as.yearmon(processed_logs$Date)
 
+# Creating flow total column to include flare flow during May 2023 engine maintenance
+processed_logs <- processed_logs%>%
+  mutate(ch4_flow_total = ifelse(Date >= "2023-05-01" & Date <= '2023-05-05',sum(G1_flow,flare_flow, na.rm = TRUE),
+                                 G1_flow))
+
+
 # Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
 weighted_average <- processed_logs%>%
   group_by(Month)%>%
-  summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,G1_flow,na.rm = TRUE)/100)
+  summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,ch4_flow_total,na.rm = TRUE)/100)
 
 # Removing the month column from the processed_logs df
 processed_logs<- processed_logs%>%

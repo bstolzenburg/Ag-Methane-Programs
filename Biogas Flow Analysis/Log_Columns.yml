@@ -14,6 +14,7 @@ Chaput:
 - flare_sn: 8
 - flare_totalizer: 9
 - flare_temp: 11
+- flare_temp_avg: 13
 
 Madera: 
 - G1_sn: 3
