@@ -1,11 +1,12 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 1.11.24
+# 2.8.24
 
 # Madera Updates
 ## Added section to pad missing rows and get average flow data across gaps 
 ## Added section to fill in missing ch4 readings with rolling average
 ## Added to weighted CH4 calculation code to include flare flow during overhall in 5/2023
+## Incorporate dynamic paths so this file can be called from other file locations using the 'source()' function
 
 # Program to process biogas flow logs and output .xlsx results
 
@@ -27,6 +28,7 @@ LoadModules <- function(){
   library(fs)
   library(stringr)
   library(padr)
+  library(here)
 }
 
 # Loading modules
@@ -44,14 +46,11 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 ### Make sure that all csv's to be read in are in the 'Flow Data' folder located in the same dir as this .R file
 
-# Creating path variable
-path <- file.path(getwd(),'Flow Data')     
-
-# Setting working directory based on path 
-setwd(path)
+# Creating path variable for the 'Flow Data' folder
+flow_data_path <- file.path(getwd(),'Flow Data')  
 
 ## Importing data and creating merged logs ----
-merged_logs <- ldply(list.files(),.fun = read.csv,check.names = FALSE,header = TRUE) 
+merged_logs <- ldply(list.files(path = flow_data_path, full.names = TRUE),.fun = read.csv,check.names = FALSE,header = TRUE) 
 
 
 ## Getting Farm Configuration from YAML file -----
@@ -637,8 +636,6 @@ gc()
 
 # Writing Results to Excel ----
 
-# Resetting working directory
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Output file name
 date <- format(Sys.Date(),"%m.%d.%y")
