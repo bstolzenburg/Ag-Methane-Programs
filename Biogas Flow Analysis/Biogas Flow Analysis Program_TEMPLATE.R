@@ -1,6 +1,6 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 10.13.23
+# 3.14.24
 
 
 # Program to process biogas flow logs and output .xlsx results
@@ -34,11 +34,7 @@ LoadModules()
 # Resetting working directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-### Reading In Merged Logs 
-
-# 2: Multiple Biogas Flow CSVs that need to be merged 
-
-### Make sure that all csv's to be read in are in the 'Flow Data' folder located in the same dir as this .R file
+## Reading Logs 
 
 # Creating path variable
 path <- file.path(getwd(),'Flow Data')     
@@ -48,7 +44,6 @@ setwd(path)
 
 ## Importing data and creating merged logs ----
 merged_logs <- ldply(list.files(),.fun = read.csv,check.names = FALSE,header = TRUE) 
-
 
 ## Getting Farm Configuration from YAML file -----
 
@@ -86,7 +81,9 @@ ParseYAML <- function(farm){
 # Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
 
-cfg <- ParseYAML('INSERT FARM NAME')                                     ####### INPUT 
+farm <- ''                            # Input Farm name Here
+
+cfg <- ParseYAML(farm)                                 
 
 # Getting column headers
 column_names <- cfg[[1]]
@@ -101,7 +98,7 @@ indexes <- cfg[[2]]
 # Adding degrees symbol to temperature column headers
 colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
 
-## Saving original headers to be re-applied at end of program
+## Saving original headers to be re-applied at end
 
 # Saving the original column names as 'headers' variable
 og_headers <- colnames(merged_logs)
@@ -114,7 +111,7 @@ max_header <- as.integer(length(og_headers))
 
 ## Cleaning up column headers ----
 
-## Formatting Dates and Times and sorting dataframe ----
+### Formatting Dates and Times and sorting dataframe ----
 
 # Convert all dates to same format
 merged_logs$Date <- as.Date(parse_date_time(merged_logs$Date,c('mdy','ymd')))
@@ -210,11 +207,12 @@ rm(indexes,cfg,path)
 # Create list of totalizers 
 ## Filtering updated column names for 'totalizer' 
 totalizer_list <- column_names[grepl('totalizer',column_names)]
-print('Printing Totalizer Columns...')
+message('Printing totalizer columns to be processed')
 print(totalizer_list)
 
 
-## Initial Process of merged logs ----
+
+## Initial Processing of merged logs ----
 
 TotalizerDiff <- function(merged_logs,totalizer_list){
   # Getting first timestamp
@@ -240,8 +238,27 @@ TotalizerDiff <- function(merged_logs,totalizer_list){
 # Calling function
 processed_logs <- TotalizerDiff(merged_logs,totalizer_list)
 
+# Gap Analysis ----
+
+# Convert date to correct format for excel 
+processed_logs$Date <- mdy(processed_logs$Date)
+
+# Calculating the time difference based on date_time column
+processed_logs<-processed_logs%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
 
 
+
+# Creating a missing timestamp column (1 timestamp = 15 minutes)
+processed_logs<-processed_logs%>%
+  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
+                                       time_diff > 15 ~ time_diff/15,
+                                       is.na(time_diff)==TRUE ~ 0))
+
+
+# Dropping columns from the final dataframe
+processed_logs<- processed_logs%>%
+  select(-c('time_diff',))
 
 ## Processing Totalizer Values ----
 
@@ -311,9 +328,9 @@ for (totalizer in totalizer_list){
 
 rm(diff_name,new_name,sub_method,totalizer)
 
+
 ## Flare Operational Flow ----
 
-## Flare Operational Activity
 FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Quoting variables 
   temp <- enquo(temp)
@@ -336,33 +353,6 @@ FlareOperation <- function(logs,temp,temp_avg,flare_flow){
 
 # Processing operational/non-operational flare flow 
 processed_logs<-FlareOperation(processed_logs,flare_temp,flare_temp_avg,flare_flow)
-
-
-
-
-
-# Gap Analysis ----
-
-# Convert date to correct format for excel 
-processed_logs$Date <- mdy(processed_logs$Date)
-
-# Calculating the time difference based on date_time column
-processed_logs<-processed_logs%>%
-  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
-
-
-
-# Creating a missing timestamp column (1 timestamp = 15 minutes)
-processed_logs<-processed_logs%>%
-  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
-                                       time_diff > 15 ~ time_diff/15,
-                                       is.na(time_diff)==TRUE ~ 0))
-
-
-# Dropping columns from the final dataframe
-processed_logs<- processed_logs%>%
-  select(-c('time_diff',))
-
 
 
 ## Gap Summaries ----
@@ -448,8 +438,6 @@ TimestampSummary <- function(logs,missing_timestamp){
   return(gap_summary)
   
 }
-
-
 
 ### Creating gap summaries ---- 
 
@@ -631,13 +619,6 @@ processed_logs <- processed_logs%>%
   select(- date_time)
 
 
-## Calculating total flow ------ 
-processed_logs <- processed_logs%>%
-  mutate(Total_flow = ifelse(is.na(flare_flow),G1_flow,G1_flow + flare_flow ))
-
-
-
-
 ### Returning column headers to their original values
 for(x in 1:max_header){
   colnames(processed_logs)[x]<- og_headers[x]
@@ -653,15 +634,15 @@ rm(og_headers,max_header,totalizer_list,x)
 gc()
 
 
-
-
 # Writing Results to Excel ----
+
+# Output file name
+date <- format(Sys.Date(),"%m.%d.%y")
+
+file_name = paste(farm,date,'.xlsx', sep = '_')     
 
 # Resetting working directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-
-# Output file name
-file_name = 'INSERT FILE NAME.xlsx'                                   ####### INPUT 
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
@@ -676,194 +657,113 @@ data_tables <- list('Processed Logs'= processed_logs,                         ##
                     'Engine Gap Summary' = G1_gap_summary,
                     'Flare Gap Summary' = flare_gap_summary)
 
+
 # Calling function for all dataframes in list 
 
-# Function to write results tables to excel spreadsheet
-ToExcel <- function(file,tables_list){
+ToExcel <- function(file_name, data_tables) {
+  if (!file.exists(file_name)) {
+    createNewExcelFile(file_name, data_tables)
+  } else {
+    handleExistingFile(file_name, data_tables)
+  }
+}
+
+createNewExcelFile <- function(file_name, data_tables) {
+  cat('File ', file_name, ' doesn\'t exist... Creating new excel file', '\n\n')
+  wb <- createWorkbook()
+  cat(file_name, ' created in current directory', '\n\n')
+  processTables(wb, data_tables)
+  saveAndFinish(wb, file_name)
+}
+
+handleExistingFile <- function(file_name, data_tables) {
+  cat('File: ', file_name, ' already exists...\n\n')
+  user_input <- askForOverwrite(file_name)
   
-  # Check if file exists
-  if(file.exists(file)== FALSE){
-    
-    cat('File ',file_name,' doesnt exist... Creating new excel file', '\n')
-    cat('\n')
-    
-    # Create excel workbook
-    wb <- createWorkbook(file_name)
-    
-    cat(file_name,' created in current directory', '\n')
-    cat('\n')
-    
-    # Iterate through list of dataframes in list and create worksheets/add data tables
-    for (sheet_name in names(data_tables)){
-      
-      # Extracting dataframe from list
-      df <- data_tables[[sheet_name]]
-      
-      # Check if dataframe is empty 
-      if(nrow(df)>0){
-        # Add an excel sheet for the data table
-        sheet1 <- addWorksheet(wb,sheetName = sheet_name)
-        
-        # Add data table to the sheet
-        writeData(wb,sheet = sheet1,x = df,colNames = TRUE)
-        
-        
-        
-        
-        # Writing hyperlink formulas for gap summary
-        if (isTRUE(grepl('Gap',sheet_name,ignore.case = TRUE))){
-          
-          # Get index of link column 
-          link_num <- grep('link',colnames(df),ignore.case = TRUE)
-          
-          # Get link variable name 
-          link <- df$link
-          
-          # Adding the hyperlinks to the Gap Summary Table
-          writeFormula(wb, sheet = sheet1,startCol = link_num , startRow = 2, x = link)
-        }
-      }else{
-        cat("Skipping empty dataframe for sheet:", sheet_name, "\n")
-        cat('\n')
+  if (user_input == 'Y') {
+    wb <- loadWorkbook(file_name)
+    clearAndWriteData(wb, data_tables)
+    saveAndFinish(wb, file_name, TRUE)
+  } else {
+    new_file_name <- askForNewFileName()
+    cat('Creating new excel file...\n\n')
+    wb <- createWorkbook()
+    processTables(wb, data_tables)
+    saveAndFinish(wb, new_file_name)
+  }
+}
+
+processTables <- function(wb, data_tables) {
+  for (sheet_name in names(data_tables)) {
+    df <- data_tables[[sheet_name]]
+    if (nrow(df) > 0) {
+      sheet1 <- addWorksheet(wb, sheetName = sheet_name)
+      writeData(wb, sheet = sheet1, x = df, colNames = TRUE)
+      fitColumns(wb, sheet1, df)
+      if (isTRUE(grepl('Gap', sheet_name, ignore.case = TRUE))) {
+        writeGapLinks(wb, sheet1, df)
+        fitColumns(wb, sheet1, df)
       }
-      
-      
-    }
-    
-    # Saving workbook 
-    saveWorkbook(wb,file_name)
-  
-    print('Finished, workbook saved')
-    cat('\n')
-    
-  }else{
-    
-    # If file already exists
-    cat('File: ',file_name,' already exists...','\n')
-    cat('\n')
-    
-    user_prompt <- paste('Do you want to overwrite file:',file_name,'(Y/N) ',sep = ' ')
-    cat('\n')
-    
-    # Getting user input
-    user_input <- readline(prompt = user_prompt)
-    
-    # Cleaning user input
-    user_input <- toupper(user_input)
-    
-    user_input <- trimws(user_input)
-    
-    # Checking user input
-    if(user_input == 'Y'){
-      
-      print('Overwriting file...')
-      cat('\n')
-      
-      # Loading existing workbook
-      wb <- loadWorkbook(file_name)
-      
-      # Iterate through list of dataframes in list and create worksheets/add data tables
-      for (sheet_name in names(data_tables)){
-        
-        # Extracting dataframe from list
-        df <- data_tables[[sheet_name]]
-        
-        # Check if dataframe is empty 
-        if(nrow(df)>0){
-          
-          # Create an empty dataframe with the same structure as the original sheet
-          empty_data <- data.frame(matrix("", nrow = 0, ncol = ncol(read.xlsx(wb, sheet = sheet_name))))
-          
-          # Write the empty dataframe to the sheet, effectively clearing its contents
-          writeData(wb, sheet = sheet_name, x = empty_data, startCol = 1, startRow = 1, colNames = TRUE)
-          
-          # Add data table to the sheet
-          writeData(wb,sheet = sheet_name,x = df,colNames = TRUE)
-          
-          # Writing hyperlink formulas for gap summary
-          if (isTRUE(grepl('Gap',sheet_name,ignore.case = TRUE))){
-            
-            # Get index of link column 
-            link_num <- grep('link',colnames(df),ignore.case = TRUE)
-            
-            # Get link variable name 
-            link <- df$link
-            
-            # Adding the hyperlinks to the Gap Summary Table
-            writeFormula(wb, sheet = sheet_name,startCol = link_num , startRow = 2, x = link)
-          }
-        }else{
-          cat("Skipping empty dataframe for sheet:", sheet_name, "\n")
-          cat('\n')
-        }
-        
-        
-      }
-      
-      # Saving workbook 
-      saveWorkbook(wb,file_name,overwrite = TRUE)
-      
-      cat('Finished...',file_name,' saved' , '\n')
-      
-    }else{
-      
-      # Get new file name
-      file_name <- readline(prompt = 'Enter New File Name (with .xlsx extension): ')
-      
-      print('Creating new excel file...')
-      cat('\n')
-      
-      # Create excel workbook
-      wb <- createWorkbook(file_name)
-      
-      cat(file_name,' created in current directory', '\n')
-      cat('\n')
-      
-      # Iterate through list of dataframes in list and create worksheets/add data tables
-      for (sheet_name in names(data_tables)){
-        
-        # Extracting dataframe from list
-        df <- data_tables[[sheet_name]]
-        
-        # Check if dataframe is empty 
-        if(nrow(df)>0){
-          # Add an excel sheet for the data table
-          sheet1 <- addWorksheet(wb,sheetName = sheet_name)
-          
-          # Add data table to the sheet
-          writeData(wb,sheet = sheet1,x = df,colNames = TRUE)
-          
-          
-          
-          
-          # Writing hyperlink formulas for gap summary
-          if (isTRUE(grepl('Gap',sheet_name,ignore.case = TRUE))){
-            
-            # Get index of link column 
-            link_num <- grep('link',colnames(df),ignore.case = TRUE)
-            
-            # Get link variable name 
-            link <- df$link
-            
-            # Adding the hyperlinks to the Gap Summary Table
-            writeFormula(wb, sheet = sheet1,startCol = link_num , startRow = 2, x = link)
-          }
-        }else{
-          cat("Skipping empty dataframe for sheet:", sheet_name, "\n")
-        }
-        
-        
-      }
-      
-      # Saving workbook 
-      saveWorkbook(wb,file_name)
-      
-      cat('Finished', file_name,' saved')
+    } else {
+      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
   }
 }
 
+fitColumns <- function(wb, sheet, df) {
+  for (col in 1:ncol(df)) {
+    setColWidths(wb, sheet = sheet, cols = col, widths = "auto")
+  }
+}
+
+writeGapLinks <- function(wb, sheet, df) {
+  link_num <- grep('link', colnames(df), ignore.case = TRUE)
+  link <- df$link
+  writeFormula(wb, sheet = sheet, startCol = link_num, startRow = 2, x = link)
+}
+
+clearAndWriteData <- function(wb, data_tables) {
+  for (sheet_name in names(data_tables)) {
+    df <- data_tables[[sheet_name]]
+    if (nrow(df) > 0) {
+      empty_data <- data.frame(matrix("", nrow = 0, ncol = ncol(read.xlsx(wb, sheet = sheet_name))))
+      writeData(wb, sheet = sheet_name, x = empty_data, startCol = 1, startRow = 1, colNames = TRUE)
+      writeData(wb, sheet = sheet_name, x = df, colNames = TRUE)
+      fitColumns(wb, sheet_name, df)
+      if (isTRUE(grepl('Gap', sheet_name, ignore.case = TRUE))) {
+        writeGapLinks(wb, sheet_name, df)
+        fitColumns(wb, sheet_name, df)
+      }
+    } else {
+      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
+    }
+  }
+}
+
+askForOverwrite <- function(file_name) {
+  user_prompt <- paste('Do you want to overwrite file:', file_name, '(Y/N) ', sep = ' ')
+  cat('\n')
+  user_input <- readline(prompt = user_prompt)
+  toupper(trimws(user_input))
+}
+
+askForNewFileName <- function() {
+  new_file_name <- readline(prompt = 'Enter New File Name (with .xlsx extension and no spaces): ')
+  new_file_name
+}
+
+saveAndFinish <- function(wb, file_name, overwrite = FALSE) {
+  saveWorkbook(wb, file_name, overwrite = overwrite)
+  cat('Finished...', file_name, ' saved\n')
+}
+
+
+
 # Writing results to excel
-ToExcel(file_name,tables)
+ToExcel(file_name,data_tables)
+
+# Garbage Clean
+gc()
+
 
 
