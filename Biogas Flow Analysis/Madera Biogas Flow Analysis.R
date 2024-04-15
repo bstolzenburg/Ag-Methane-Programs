@@ -7,6 +7,8 @@
 ## Added section to fill in missing ch4 readings with rolling average
 ## Added to weighted CH4 calculation code to include flare flow during overhall in 5/2023
 ## Incorporate dynamic paths so this file can be called from other file locations using the 'source()' function
+## Removing 'links' so 'Processed_logs' can be written to .csv (smaller file size) and the summary can be written to .xlsx
+## Added section to write processed_logs to .csv and write all of the summaries (data_tables) to .xlsx to keep file size smaller
 
 # Program to process biogas flow logs and output .xlsx results
 
@@ -34,13 +36,35 @@ LoadModules <- function(){
 # Loading modules
 LoadModules()
 
+# Setting Dynamic Working Environment -----
+## Get user name
+user_name <- Sys.getenv("USERNAME")
+
+# Build base path
+base_path <- base_path <- file.path("C:", "Users", user_name, winslash = "\\")
+
+# Get target directory
+target_dir <- file.path(base_path, "Patrick J Wood Dropbox",
+                        "_operations",
+                        "Clients",
+                        "Philip Verwey Farms",
+                        'Farm1Madera',
+                        'RP 2023',
+                        'Calcs',
+                        'Flow',
+                        'eLCFS')
+
+# Setting working directory
+setwd(target_dir)
+
 
 # Reading in Gas Logs ---------------
 
-# Resetting working directory
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+### Reading In Merged Logs 
 
-# Reading In Merged Logs ----
+# 2: Multiple Biogas Flow CSVs that need to be merged 
+
+### Make sure that all csv's to be read in are in the 'Flow Data' folder located in the same dir as this .R file
 
 # Creating path variable for the 'Flow Data' folder
 flow_data_path <- file.path(getwd(),'Flow Data')  
@@ -97,8 +121,11 @@ indexes <- cfg[[2]]
 
 # Cleaning Merged Logs -----
 
-# Adding degrees symbol to temperature column headers
-colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
+## Fixing degree symbol in column headers ----
+
+# Convert column names to character and then to UTF-8
+colnames(merged_logs) <- as.character(colnames(merged_logs))
+colnames(merged_logs) <- iconv(colnames(merged_logs), "latin1", "UTF-8")
 
 ## Saving original headers to be applied at end of program
 
@@ -198,7 +225,7 @@ CleanCols <- function(index,names){
 merged_logs <- CleanCols(indexes,column_names)
 
 # Cleaning up directory 
-rm(indexes,cfg,path)
+rm(cfg)
 
 
 
@@ -358,7 +385,7 @@ processed_logs<-processed_logs%>%
 
 # Dropping columns from the final dataframe
 processed_logs<- processed_logs%>%
-  select(-c('time_diff',))
+  select(-c('time_diff'))
 
 
 
@@ -379,11 +406,8 @@ EngineSummary <- function(logs,device_flow_valid,device_kwh_valid){
     # Filtering for invalid totalizer differences
     filter(!!device_flow_valid != 'Totalizer Feasible' | !!device_kwh_valid != 'Totalizer Feasible')%>%
     
-    # Creating hyperlink string to link to processed logs 
-    mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
-    
     # Selecting columns for gap summary 
-    select(Date,Time,!!device_flow_valid,!!device_kwh_valid,link)
+    select(Date,Time,!!device_flow_valid,!!device_kwh_valid)
   
   
   
@@ -407,11 +431,8 @@ FlareSummary <- function(logs,device_flow_valid){
     # Filtering for invalid totalizer differences
     filter(!!device_flow_valid != 'Totalizer Feasible')%>%
     
-    # Creating hyperlink string to link to processed logs 
-    mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
-    
     # Selecting columns for gap summary 
-    select(Date,Time,!!device_flow_valid,link)
+    select(Date,Time,!!device_flow_valid)
   
   
   
@@ -514,12 +535,9 @@ GapSummary <- function(logs,missing_timestamp){
     # Filtering for invalid totalizer differences
     filter(!!missing_timestamp != 0)%>%
     
-    # Creating hyperlink string to link to processed logs 
-    mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
-    
     # Selecting columns for gap summary 
     ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
-    select(Date,Time,G1_totalizer_diff,G1_flow,G1_kwh_totalizer_diff,G1_kwh,missing_timestamp,link)
+    select(Date,Time,G1_totalizer_diff,G1_flow,G1_kwh_totalizer_diff,G1_kwh,missing_timestamp)
   
   
   
@@ -558,17 +576,11 @@ Ch4_gap_summary <- processed_logs%>%
   # Adding row numbers so hyperlinks can be created
   mutate(row_numbers <<- seq.int(nrow(processed_logs))+1)%>%
   
-  # Creating hyperlink string to link to processed logs "Date" column
-  mutate(link = makeHyperlinkString(sheet = 'Processed Logs',
-                                    text = 'Link to Processed_Logs',
-                                    row = row_numbers, 
-                                    col = 1))%>%
-  
   # Filtering for instances where ch4_substitution occurred
   filter(ch4_substitution != 'No Substitution')%>%
   
   # Selecting columns
-  select(Date,Time,ch4_meter,ch4_sub,link)
+  select(Date,Time,ch4_meter,ch4_sub)
   
 
 
@@ -632,11 +644,16 @@ gc()
 
 # Writing Results to Excel ----
 
+# Setting working directory
+setwd(target_dir)
 
-# Output file name
+
+# Output file names
 date <- format(Sys.Date(),"%m.%d.%y")
 
-file_name = paste('Madera Biogas Flow Summary_WORKING_',date,'.xlsx', sep = '')                                           ####### INPUT 
+# Creating file name for .xlsx summary and .csv processed_logs
+file_name = paste('Madera Biogas Flow Summary_WORKING_',date,'.xlsx', sep = '')
+processed_name = paste('Madera Processed Logs_',date,'.csv',sep = '')
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
@@ -644,8 +661,7 @@ names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
 
 # Creating list of dataframes to include as tables in the results spreadsheet
 # 'Excel Sheet Name' = 'Dataframe Name'
-data_tables <- list('Processed Logs'= processed_logs,                               ####### INPUT
-                    'Flow Summary' = flow_summary,
+data_tables <- list('Flow Summary' = flow_summary,
                     'Gap Summary' = flow_gap_summary,
                     'Engine Gap Summary' = G1_gap_summary,
                     'Flare Gap Summary' = flare_gap_summary,
@@ -696,10 +712,6 @@ processTables <- function(wb, data_tables) {
       sheet1 <- addWorksheet(wb, sheetName = sheet_name)
       writeData(wb, sheet = sheet1, x = df, colNames = TRUE)
       fitColumns(wb, sheet1, df)
-      if (isTRUE(grepl('Gap', sheet_name, ignore.case = TRUE))) {
-        writeGapLinks(wb, sheet1, df)
-        fitColumns(wb, sheet1, df)
-      }
     } else {
       cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
@@ -712,12 +724,6 @@ fitColumns <- function(wb, sheet, df) {
   }
 }
 
-writeGapLinks <- function(wb, sheet, df) {
-  link_num <- grep('link', colnames(df), ignore.case = TRUE)
-  link <- df$link
-  writeFormula(wb, sheet = sheet, startCol = link_num, startRow = 2, x = link)
-}
-
 clearAndWriteData <- function(wb, data_tables) {
   for (sheet_name in names(data_tables)) {
     df <- data_tables[[sheet_name]]
@@ -726,10 +732,6 @@ clearAndWriteData <- function(wb, data_tables) {
       writeData(wb, sheet = sheet_name, x = empty_data, startCol = 1, startRow = 1, colNames = TRUE)
       writeData(wb, sheet = sheet_name, x = df, colNames = TRUE)
       fitColumns(wb, sheet_name, df)
-      if (isTRUE(grepl('Gap', sheet_name, ignore.case = TRUE))) {
-        writeGapLinks(wb, sheet_name, df)
-        fitColumns(wb, sheet_name, df)
-      }
     } else {
       cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
@@ -755,8 +757,69 @@ saveAndFinish <- function(wb, file_name, overwrite = FALSE) {
 
 
 
-# Writing results to excel
+# Writing summary results to excel
 ToExcel(file_name,data_tables)
+
+
+
+
+# Writing 'Processed Logs' to .csv ----
+ToCSV <- function(processed_name, processed_logs) {
+  if (!file.exists(processed_name)) {
+    createNewCSV(processed_name, processed_logs)
+  } else {
+    handleExistingFile(processed_name, processed_logs)
+  }
+}
+
+createNewCSV <- function(processed_name, processed_logs) {
+  cat('File ', processed_name, ' doesn\'t exist... Creating new .csv file', '\n\n')
+  cat(processed_name, ' created in current directory', '\n\n')
+  write_csv(processed_logs,file = processed_name)
+}
+
+handleExistingFile <- function(processed_name, processed_logs) {
+  cat('File: ', processed_name, ' already exists...\n\n')
+  user_input <- askForOverwrite(processed_name)
+  
+  if (user_input == 'Y') {
+    write_csv(processed_logs,file = processed_name)
+  } else {
+    new_processed_name <- askForNewFileName()
+    cat('Creating new excel file...\n\n')
+    write_csv(processed_logs,file = processed_name)
+  }
+}
+
+askForOverwrite <- function(file_name) {
+  user_prompt <- paste('Do you want to overwrite file:', file_name, '(Y/N) ', sep = ' ')
+  cat('\n')
+  user_input <- readline(prompt = user_prompt)
+  toupper(trimws(user_input))
+}
+
+askForNewFileName <- function() {
+  new_file_name <- readline(prompt = 'Enter New File Name (with .csv extension and no spaces): ')
+  new_file_name
+}
+
+# Asking user if they want to write processed_logs to .csv
+
+askForCSV <- function(){
+  csv_prompt <- paste('Do you want to write processed_logs to .csv?','(Y/N) ',sep = ' ')
+  cat('\n')
+  user_input <- readline(prompt = csv_prompt)
+  toupper(trimws(user_input))
+  
+  if (user_input == 'Y'){
+    ToCSV(processed_name,processed_logs)
+  }else{
+    return()
+  }
+}
+
+# Calling function
+askForCSV()
 
 # Garbage Clean
 gc()
