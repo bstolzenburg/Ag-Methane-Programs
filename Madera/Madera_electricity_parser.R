@@ -1,8 +1,9 @@
 # Bryan Stolzenburg 
 # Madera Electricity Query File 
-# 4.5.24
+# 4.15.24
 ## Updates: 
 ## Added code to dynamically set working environment
+## Added code to correctly manage timezones and daylight savings
 
 library(conflicted)
 library(dplyr)
@@ -17,7 +18,7 @@ library(openxlsx)
 conflicts_prefer(dplyr::filter)
 
 
-# Setting Working Environment -----
+# Setting Dynamic Working Environment -----
 ## Get user name
 user_name <- Sys.getenv("USERNAME")
 
@@ -35,7 +36,7 @@ target_dir <- file.path(base_path, "Patrick J Wood Dropbox",
                         'Electricity',
                         'LCFS Electricity Data')
 
-# Check if the current working directory is not the target directory
+# Setting working directory
 setwd(target_dir)
 
   
@@ -118,10 +119,12 @@ GetData <- function(folder){
   return(df)
 }
 
-# Reading in PGE Data -----
+# PGE Data ------
+
+## Reading in PGE Data -----
 pge_data <- GetData('PG&E Data')
 
-# Cleaning PG&E Data ----
+## Cleaning PG&E Data ----
 
 # Renaming columns 
 names(pge_data)[names(pge_data) == 'elec_intvl_end_dttm'] <- 'Timestamp'
@@ -138,7 +141,7 @@ pge_data <- pge_data %>%
 
 
 
-## Crosschecking pge_data ----
+### Crosschecking pge_data ----
 pge_xchk <- pge_data%>%
   filter(is.na(Timestamp))
 
@@ -149,7 +152,7 @@ if(length(pge_xchk > 0)){
   message('No NAs found')
 }
 
-# Summarizing PG&E Data ----
+## Summarizing PG&E Data ----
 
 # Summarizing data by month 
 pge_monthly_summary <- pge_data %>%
@@ -164,8 +167,9 @@ pge_monthly_summary <- pge_monthly_summary %>%
   filter(Month > '2021-07-01')
 
 
+# Also Energy Data -----
 
-# Reading in Also Energy Data ----
+## Reading in Also Energy Data ----
 alsoenergy_data <- GetData('Also Energy Data')
 
 # Cleaning Also Energy Data ----
@@ -179,32 +183,11 @@ alsoenergy_data$Timestamp <- with_tz(alsoenergy_data$Timestamp,tzone = 'UTC')
 # Removing duplicate rows
 alsoenergy_data <- alsoenergy_data%>%
   arrange(Timestamp)%>%
-  mutate(occurance = row_number())%>%
+  mutate(occurance = row_number())%>% # Adding identifier row so timezones are independent of unique rows
   distinct_all()
-  
-
-## Crosschecking alsoenergy_data ----
-alsoenergy_xchk <- alsoenergy_data%>%
-  filter(is.na(Timestamp))
-
-if(length(alsoenergy_xchk > 0)){
-  message('Following NAs found')
-  print(head(alsoenergy_xchk))
-}else{
-  message('No NAs found')
-}
-
-# Crosschecking
-start <- ymd_hms('2023-11-01 00:00:00')
-end <- ymd_hms('2023-12-01 00:00:00')
-
-xchk <- alsoenergy_data%>%
-  filter(Timestamp >= start & Timestamp < end)
-
-print(sum(xchk$G1_kwh))
 
 
-# Summarizing Also Energy Data ----
+## Summarizing Also Energy Data ----
 
 # Summarizing data by month
 alsoenergy_monthly_summary <- alsoenergy_data %>%
@@ -221,18 +204,23 @@ alsoenergy_monthly_summary <- alsoenergy_monthly_summary %>%
 pge_monthly_summary$Month <- format(pge_monthly_summary$Month,'%m/%d/%Y')
 alsoenergy_monthly_summary$Month <- format(alsoenergy_monthly_summary$Month,'%m/%d/%Y')
 
-
 # Export data to Excel -----
 
 # Create list of dataframes to export 
 data_tables <- list('PG&E Data'= pge_monthly_summary,
                     'Also Energy Data' = alsoenergy_monthly_summary)
 
-# Generating File Name
+# Generating File Name ----
+# Getting today's date
 date <- format(Sys.Date(),"%m.%d.%y")
 
+# Creating file path for working summary file
 file_name = paste('Madera Electricity Summary WORKING_',date,'.xlsx',sep = '')
 
+# File name message
+message(file_name, ' has been created in the directory. Please review, and Save As Madera Electricity Summary_Linked.xlsx if accurate')
+
+# Function to output data_tables to excel file sheets
 ToExcel <- function(file_name, data_tables) {
   # Check if the file already exists
   if (file.exists(file_name)) {
