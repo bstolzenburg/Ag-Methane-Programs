@@ -40,11 +40,7 @@ LoadModules()
 # Resetting working directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-### Reading In Merged Logs 
-
-# 2: Multiple Biogas Flow CSVs that need to be merged 
-
-### Make sure that all csv's to be read in are in the 'Flow Data' folder located in the same dir as this .R file
+# Reading In Merged Logs ----
 
 # Creating path variable for the 'Flow Data' folder
 flow_data_path <- file.path(getwd(),'Flow Data')  

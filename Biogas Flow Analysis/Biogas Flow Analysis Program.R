@@ -23,6 +23,7 @@ LoadModules <- function(){
   library(fs)
   library(stringr)
   library(padr)
+  library(here)
 }
 
 # Loading modules
@@ -30,9 +31,6 @@ LoadModules()
 
 
 # Reading in Gas Logs ---------------
-
-# Resetting working directory
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 ## Reading Logs 
 
@@ -81,7 +79,7 @@ ParseYAML <- function(farm){
 # Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
 
-farm <- ''                            # Input Farm name Here
+farm <- '' # Enter farm name here
 
 cfg <- ParseYAML(farm)                                 
 
