@@ -683,7 +683,7 @@ ToExcel <- function(file_name, data_tables) {
 createNewExcelFile <- function(file_name, data_tables) {
   cat('File ', file_name, ' doesn\'t exist... Creating new excel file', '\n\n')
   wb <- createWorkbook()
-  cat(file_name, ' created in current directory', '\n\n')
+  message(file_name, ' created in current directory', '\n\n')
   processTables(wb, data_tables)
   saveAndFinish(wb, file_name)
 }
@@ -752,7 +752,7 @@ askForNewFileName <- function() {
 
 saveAndFinish <- function(wb, file_name, overwrite = FALSE) {
   saveWorkbook(wb, file_name, overwrite = overwrite)
-  cat('Finished...', file_name, ' saved\n')
+  message('Finished...', file_name, ' saved\n')
 }
 
 
@@ -768,17 +768,17 @@ ToCSV <- function(processed_name, processed_logs) {
   if (!file.exists(processed_name)) {
     createNewCSV(processed_name, processed_logs)
   } else {
-    handleExistingFile(processed_name, processed_logs)
+    handleExistingCSV(processed_name, processed_logs)
   }
 }
 
 createNewCSV <- function(processed_name, processed_logs) {
   cat('File ', processed_name, ' doesn\'t exist... Creating new .csv file', '\n\n')
-  cat(processed_name, ' created in current directory', '\n\n')
+  message(processed_name, ' created in current directory', '\n\n')
   write_csv(processed_logs,file = processed_name)
 }
 
-handleExistingFile <- function(processed_name, processed_logs) {
+handleExistingCSV <- function(processed_name, processed_logs) {
   cat('File: ', processed_name, ' already exists...\n\n')
   user_input <- askForOverwrite(processed_name)
   
@@ -786,8 +786,8 @@ handleExistingFile <- function(processed_name, processed_logs) {
     write_csv(processed_logs,file = processed_name)
   } else {
     new_processed_name <- askForNewFileName()
-    cat('Creating new excel file...\n\n')
-    write_csv(processed_logs,file = processed_name)
+    cat('Creating new csv file...\n\n')
+    write_csv(processed_logs,file = new_processed_name)
   }
 }
 
@@ -813,7 +813,10 @@ askForCSV <- function(){
   
   if (user_input == 'Y'){
     ToCSV(processed_name,processed_logs)
+    message('.csv written to directory... ')
+    message('Finished')
   }else{
+    message('Finished')
     return()
   }
 }
