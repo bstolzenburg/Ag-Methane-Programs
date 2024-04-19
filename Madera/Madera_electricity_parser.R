@@ -4,6 +4,7 @@
 ## Updates: 
 ## Added code to dynamically set working environment
 ## Added code to correctly manage timezones and daylight savings
+## Added 'filter date' section so newer methodologies do not get applied to old data that has already been verified
 
 library(conflicted)
 library(dplyr)
@@ -12,6 +13,10 @@ library(readxl)
 library(zoo)
 library(lubridate)
 library(openxlsx)
+
+
+# Filter date -----
+filter_date <- '2022-12-31'                    # Alter this depending on the reporting period, this should be the cutoff for any previously verified data so it remains unchanged
 
 # Resolving conflicts with packages 
 ## Filter
@@ -152,19 +157,20 @@ if(length(pge_xchk > 0)){
   message('No NAs found')
 }
 
+
 ## Summarizing PG&E Data ----
 
 # Summarizing data by month 
 pge_monthly_summary <- pge_data %>%
   group_by(Month = floor_date(Timestamp, 'month')) %>%
-  summarise('kWH Received' = sum(kwh_received),
+  summarise('kWh Received' = sum(kwh_received),
             'kWh Delivered' = sum(kwh_delivered))
 
 
 
 # Filter dates (> August 2021)
 pge_monthly_summary <- pge_monthly_summary %>%
-  filter(Month > '2021-07-01')
+  filter(Month > filter_date)
 
 
 # Also Energy Data -----
@@ -196,13 +202,23 @@ alsoenergy_monthly_summary <- alsoenergy_data %>%
 
 # Filter dates (> August 2021)
 alsoenergy_monthly_summary <- alsoenergy_monthly_summary %>%
-  filter(Month > '2021-07-01')
+  filter(Month > filter_date)
 
+### Crosschecking alsoenergy_data ----
+alsoenergy_xchk <- alsoenergy_data%>%
+  filter(is.na(Timestamp))
 
+if(length(alsoenergy_xchk > 0)){
+  message('Following NAs found')
+  print(head(alsoenergy_xchk))
+}else{
+  message('No NAs found')
+}
 
 # Formatting dates for excel ----
 pge_monthly_summary$Month <- format(pge_monthly_summary$Month,'%m/%d/%Y')
 alsoenergy_monthly_summary$Month <- format(alsoenergy_monthly_summary$Month,'%m/%d/%Y')
+
 
 # Export data to Excel -----
 
