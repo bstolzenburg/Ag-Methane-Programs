@@ -71,7 +71,7 @@ GetData <- function(folder){
   
   # Read .xlsx files in folder into dataframe
   tryCatch({
-    file_list <- list.files()
+    file_list <- list.files(pattern = '\\.xlsx$')
     first_file <- read_excel(file_list[1], na = "")  # Read the first file
     df_list <- lapply(file_list, function(file) {
       tryCatch({
@@ -240,7 +240,7 @@ message(file_name, ' has been created in the directory. Please review, and Save 
 ToExcel <- function(file_name, data_tables) {
   # Check if the file already exists
   if (file.exists(file_name)) {
-    cat('File: ', file_name, ' already exists...\n\n')
+    message('File: ', file_name, ' already exists...\n\n')
     
     user_prompt <- readline(prompt = paste('Do you want to overwrite file:', file_name, '(Y/N) ', sep = ' '))
     cat('\n')
@@ -249,7 +249,7 @@ ToExcel <- function(file_name, data_tables) {
     
     # If user selects yes (they want to overwrite)
     if (user_input == 'Y') {
-      print('Overwriting file...')
+      message('Overwriting file...')
     } else {
       new_file_name <- readline(prompt = 'Enter New File Name (with .xlsx extension): ')
       cat('Creating new excel file...\n\n')
@@ -281,7 +281,7 @@ ToExcel <- function(file_name, data_tables) {
   
   # Saving workbook with specified file name
   saveWorkbook(wb, file_name, overwrite = TRUE)
-  cat('Finished, workbook saved\n\n')
+  message('Finished, workbook saved\n\n')
 }
 
 

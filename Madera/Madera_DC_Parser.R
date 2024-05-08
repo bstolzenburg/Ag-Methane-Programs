@@ -76,7 +76,12 @@ final_df <- final_df[,-c(2:36)]
 
 
 # Getting file path for output
-result_path <- 'Madera_monitor_parsed.csv'
+
+# Getting today's date
+date <- format(Sys.Date(),"%m.%d.%y")
+
+# Creating file path for working summary file
+result_path <- paste('Madera_monitor_parsed_WORKING_',date,'.csv',sep = '')
 
 # Writing results to .csv
 write.csv(final_df,file = result_path, row.names = FALSE)
