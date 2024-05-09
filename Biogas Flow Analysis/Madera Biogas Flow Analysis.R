@@ -576,18 +576,15 @@ processed_logs_filled$Date <- as.Date(processed_logs_filled$date_time)
 processed_logs_filled$Time <- format(processed_logs_filled$date_time,format = "%H:%M:%S" )
 
 
-
-
-
-
 # Filling NAs with most recent feasible totalizer value
 
 ## Replace NAs with the most recent non-NA value in each column
 processed_logs_filled$G1_flow <- na.locf(processed_logs_filled$G1_flow)
 processed_logs_filled$G1_kwh <- na.locf(processed_logs_filled$G1_kwh)
 processed_logs_filled$missing_timestamp <- na.locf(processed_logs_filled$missing_timestamp)
+processed_logs_filled$flare_flow <- na.locf(processed_logs_filled$flare_flow)
 
-# Creating data substitution label
+### Creating data substitution label --------
 processed_logs_filled <- processed_logs_filled%>%
   mutate(flow_data_substitution = ifelse(missing_timestamp != 0,
                                      "Flow Data Gap Substituted",
@@ -611,7 +608,7 @@ fill_flow_variables <- function(variables_list, df) {
 }
 
 # Define the list of variables to perform the operation on
-variables_list <- c("G1_flow",'G1_kwh')                          #INPUT
+variables_list <- c("G1_flow",'G1_kwh','flare_flow')                          #INPUT
 
 # Call the function
 processed_logs_filled <- fill_flow_variables(variables_list, processed_logs_filled)
@@ -702,20 +699,19 @@ processed_logs$Month <- as.yearmon(processed_logs$Date)
 
 # Creating flow total column to include flare flow during May 2023 engine maintenance
 processed_logs <- processed_logs%>%
-  mutate(ch4_flow_total = ifelse(Date >= "2023-05-01" & Date <= '2023-05-05',sum(G1_flow,flare_flow, na.rm = TRUE),
+  mutate(ch4_flow_total = ifelse(Date >= "2023-05-01" & Date <= '2023-05-05',G1_flow + flare_flow,
                                  G1_flow))
 
 
 # Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
 weighted_average <- processed_logs%>%
   group_by(Month)%>%
+  filter(date_time >= period_start)%>%
   summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,ch4_flow_total,na.rm = TRUE)/100)
 
 # Removing the month column from the processed_logs df
 processed_logs<- processed_logs%>%
   select(-Month)
-
-
 
 
 
@@ -738,11 +734,13 @@ flow_summary <- processed_logs%>%
 
 
 
-# Cleaning up Final Dataframe --------------------------
+# Cleaning up Final Dataframes --------------------------
 
-## Formatting date for excel --------
+# Removing early dates used to determine first timestamp
+processed_logs <- processed_logs%>%
+  filter(date_time >= period_start)
 
-# Removing date_time column 
+# Removing date_time column
 processed_logs <- processed_logs%>%
   select(- date_time,-time_diff)
 
@@ -812,15 +810,15 @@ ToExcel <- function(file_name, data_tables) {
 }
 
 createNewExcelFile <- function(file_name, data_tables) {
-  cat('File ', file_name, ' doesn\'t exist... Creating new excel file', '\n\n')
+  message('File ', file_name, ' doesn\'t exist... Creating new excel file', '\n\n')
   wb <- createWorkbook()
-  cat(file_name, ' created in current directory', '\n\n')
+  message(file_name, ' created in current directory', '\n\n')
   processTables(wb, data_tables)
   saveAndFinish(wb, file_name)
 }
 
 handleExistingFile <- function(file_name, data_tables) {
-  cat('File: ', file_name, ' already exists...\n\n')
+  message('File: ', file_name, ' already exists...\n\n')
   user_input <- askForOverwrite(file_name)
   
   if (user_input == 'Y') {
@@ -829,7 +827,7 @@ handleExistingFile <- function(file_name, data_tables) {
     saveAndFinish(wb, file_name, TRUE)
   } else {
     new_file_name <- askForNewFileName()
-    cat('Creating new excel file...\n\n')
+    message('Creating new excel file...\n\n')
     wb <- createWorkbook()
     processTables(wb, data_tables)
     saveAndFinish(wb, new_file_name)
@@ -848,7 +846,7 @@ processTables <- function(wb, data_tables) {
         fitColumns(wb, sheet1, df)
       }
     } else {
-      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
+      message("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
   }
 }
@@ -878,14 +876,14 @@ clearAndWriteData <- function(wb, data_tables) {
         fitColumns(wb, sheet_name, df)
       }
     } else {
-      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
+      message("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
   }
 }
 
 askForOverwrite <- function(file_name) {
   user_prompt <- paste('Do you want to overwrite file:', file_name, '(Y/N) ', sep = ' ')
-  cat('\n')
+  message('\n')
   user_input <- readline(prompt = user_prompt)
   toupper(trimws(user_input))
 }
@@ -897,7 +895,7 @@ askForNewFileName <- function() {
 
 saveAndFinish <- function(wb, file_name, overwrite = FALSE) {
   saveWorkbook(wb, file_name, overwrite = overwrite)
-  cat('Finished...', file_name, ' saved\n')
+  message('Finished...', file_name, ' saved\n')
 }
 
 
