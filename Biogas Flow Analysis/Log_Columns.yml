@@ -24,6 +24,7 @@ Madera:
 - flare_sn: 17
 - flare_totalizer: 19
 - flare_temp: 20
+- G1_flow_15min: 23
 - ch4_meter: 26
 
 Aurora Ridge:
