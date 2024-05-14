@@ -19,6 +19,7 @@ Chaput:
 Madera: 
 - G1_sn: 3
 - G1_totalizer: 5
+- G1_power: 6
 - G1_kwh_totalizer: 7
 - G2_kwh_totalizer: 14
 - flare_sn: 17
