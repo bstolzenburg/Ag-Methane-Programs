@@ -399,19 +399,98 @@ processed_logs<-processed_logs%>%
 
 # Totalizer Lag Corrections -----------------------------------------------------
 
-processed_logs <- processed_logs %>%
-  mutate(totalizer_stuck = case_when(G1_totalizer == lead(G1_totalizer) & G1_power != 0 ~ 'Totalizer Stuck',
-                                     TRUE ~ NA))
+# Function to process for totalizer lag
+TotalizerLag <- function(logs, totalizer,engine_power){
+  # Rearranging the logs in ascending order
+  logs <- logs%>%
+    arrange(date_time)
 
-for (i in 1:10){
-  if (is.na(processed_logs$totalizer_stuck[i]) == FALSE){
-    print('Current Totalizer Value')
-    print(processed_logs$G1_totalizer[i])
-    print('Next totalizer value')
-    print(processed_logs$G1_totalizer[i-1])
+  # Reversing the order of the totalizer column
+  totalizer <- rev(totalizer)
+
+  # Creating empty vector to track the lag counter
+  totalizer_lag <- vector()
+
+  # Iterating through logs to identify and count totalizer lag
+  for (i in 1:nrow(logs)){
+    if (i != 1){
+      if (totalizer[i] == totalizer[i-1] & engine_power[i] !=0){
+        totalizer_lag <- append(totalizer_lag,totalizer_lag[i-1]+1)
+      }else{
+        totalizer_lag <- append(totalizer_lag,0)
+      }
+    }else {
+      totalizer_lag <- append(totalizer_lag,0)
+    }
+
   }
+
+  # Reversing the order of the lag counter
+  totalizer_lag <- rev(totalizer_lag)
+
+  return(totalizer_lag)
 }
 
+## Correcting totalizer lag for engine ----
+
+# Creating totalizer lag column for engine
+processed_logs$engine_lag <- TotalizerLag(processed_logs,processed_logs$G1_totalizer,processed_logs$G1_power)
+
+# Correcting totalizer lag for current timestamp so the average is calculated on the correct number of timestamps
+processed_logs$engine_lag <- ifelse(processed_logs$engine_lag == 0 & lead(processed_logs$engine_lag) !=0,
+                                    lead(processed_logs$engine_lag)+1,
+                                    processed_logs$engine_lag)
+
+
+
+
+
+# Correcting totalizer lag for when there are missing timestamps, so they can be addressed separately later when the data is padded
+processed_logs <- processed_logs%>%
+  mutate(engine_lag = case_when(missing_timestamp > 0 ~ 0,
+                                TRUE ~ engine_lag))
+
+
+# Correcting for engine flow by calculating the average flow across the time period so it can be distributed across the timestamps where lag occurred
+engine_lag<- processed_logs%>%
+  select(date_time,G1_flow,G1_power,engine_lag)%>%
+  filter(engine_lag !=0)%>%
+  mutate(average_engine_flow = case_when(G1_flow != 0 & G1_power != 0 ~ G1_flow/engine_lag, 
+                                         TRUE ~ 0))
+
+# Fill in zeros with NA so they can be filled down with average flow
+engine_lag_filled <- engine_lag%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))%>%
+  mutate(average_engine_flow = case_when(average_engine_flow == 0 & lag(time_diff) > 15 ~ 0,
+                                         average_engine_flow == 0 & lag(time_diff) == 15 ~ NA, # Prevents timestamps with no flow from getting filled in from the previous value
+                                         TRUE ~ average_engine_flow))%>%
+  select(-time_diff)%>%
+  mutate(average_engine_flow = na.locf(average_engine_flow))
+
+# Merging the flare_lag_filled with processed_logs
+processed_logs_merged <- merge(processed_logs,engine_lag_filled[c('date_time','average_engine_flow')],
+                               by = 'date_time',all.x = TRUE)
+
+# Reverse order of processed_logs_merged
+processed_logs_merged <- map_df(processed_logs_merged,rev)
+
+# Replace processed_logs with processed_logs_merged
+processed_logs <- processed_logs_merged
+
+### Replace engine flow with calculated lag average where appropriate
+processed_logs <- processed_logs%>%
+  mutate(G1_flow = case_when(average_engine_flow !=0 & is.na(average_engine_flow)== FALSE ~ average_engine_flow,
+                             TRUE ~ G1_flow))
+
+rm(engine_lag,engine_lag_filled,processed_logs_merged)
+
+
+
+
+## Adding data substitution labeling for totalizer lag correction -------------------------------------------------
+processed_logs <- processed_logs%>%
+  mutate(G1_flow_valid = case_when(is.na(average_engine_flow)==FALSE & G1_flow == average_engine_flow ~ 'Totalizer stuck, filled with average flow',
+                                   TRUE ~ G1_flow_valid))
 
 
 
@@ -741,9 +820,7 @@ data_tables <- list('Processed Logs' = processed_logs,
 ToExcel <- function(file_name, data_tables) {
   if (!file.exists(file_name)) {
     createNewExcelFile(file_name, data_tables)
-  } else {
-    handleExistingFile(file_name, data_tables)
-  }
+  } 
 }
 
 createNewExcelFile <- function(file_name, data_tables) {
