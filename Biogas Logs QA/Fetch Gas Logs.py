@@ -36,100 +36,46 @@ def main():
             print("Downloading csv links for: ",project)
             print('')
             csv_links = get_links(url,username,password,secondary)
-
-            ## Filtering links by year
-
-            # Initialize an empty dictionary to store the filtered links
-            filtered_links_dict = {}
-
-            # Iterate through the list of csv links to get the year from the url
-            for link in csv_links:
-                # Extract the year from the link
-                match = re.search(r'/(\d{2})\d{6}\.CSV', link)
-                print(link)
-
-                # Check for matches
-                if match:
-                    year = f"20{match.group(1)}"
-
-                    # Add the link to the dictionary corresponding to the year
-                    if year in filtered_links_dict:
-                        filtered_links_dict[year].append(link)
-                    else:
-                        filtered_links_dict[year] = [link]
-
-
-
-
-            # ----------------------------------------------------------------
-            ## Downloading the csv data and storing in a pandas dataframe
-
-            # Iterate through each year in filtered_links_dict
-            for year in filtered_links_dict:
-                print('Downloading csv data for: ',year)
+            
+            # Iterating through csv_links to download the .csv from each link as a dataframe
+            for link in csv_links[1:4]:
+                print('Downloading data for', project,' from: ',link)
                 print('')
 
-                # Getting yearly csv links 
-                year_csv_links = filtered_links_dict[year]
+                # Getting week date label from link string to create .csv name
+                csv_name = extract_week_number(link)
                 
-                # Initialize an empty list to store the indivudal weekly dataframes
-                dfs = []
+                # Pseudocode for code additions 
+                
+                # For each weekly .csv file
 
-                # Initialize empty dictionary to store all yearly dataframes
-                complete_dict = {}
+                ## Download the file (using download_logs() function)
+                ## Download raw .csv to folder (indicated in yaml)
+                ## Need to create code for separating files by year and creating new yearly folders if necessary
+                ## May need to do it based on actual timestamps
 
-                # Iterating through .csv links and downloading
-                for link in year_csv_links[1:4]:    ## Only 1-4 for sake of testing to limit processing time
-                    
-                    # Getting weekly date from link, link specific
-                    last_part = link.split('/')[-1]
+                ## Check to see if weekly file already exists 
+                ### If yes, if # of rows in saved file is smaller than current, rewrite
+                ### If not, move on 
 
-                    # Splitting the date 
-                    date = last_part.split('.')[0]
-                    print('Downloading csv from: ',date)
-                    print('')
-                    
-                    # Downloading csv data to temporary pandas dataframe
-                    df_temp = download_logs(link,username,password)
-
-                    # Error handling for empty dataframe 
-                    if df_temp is not None: 
-                        
-                        # Appending dataframe to list of all dataframes from given year
-                        dfs.append(df_temp)
-                    else: 
-                        print('Downloaded weekly flow log: ',date,' returned None. There was an error')
-                        print('Proceeding to next link')
+                # Create dictionary storing master dataframes for each year
+                ## Key = year, item = dataframe
+                ## As each df goes by, extract year from each row and append it to corresponding master df
 
 
 
-                # Concatenate all the dataframes from given year in into one dataframe
-                appended_data = concatenate_dataframes(dfs)
 
-                # Check if concatenate was successful 
-                if appended_data is not None: 
-                    print('Successfully concatenated the dataframes for ', year)
-                    print('')
+                
+                
+                
 
-                    # If concat was successful, add yearly dataframe to dictionary
+                
 
-                    # Add dataframe to dictionary corresponding to given year key
-                    complete_dict[year] = appended_data
-
-                else: 
-                    print('Error occurred during the concatenation for ',year )
-
-
-            print('Finished adding all yearly dataframes to dictionary for ', project)
-            print('')
-            
+                
 
 
             
-
-
-
-                    
+            
 
 
 # Functions ---------------------------------------------------------------
@@ -240,6 +186,26 @@ def concatenate_dataframes(dfs):
 
     except ValueError as e:
         print(f"Error: {e}")
+
+
+def extract_week_number(link):
+    # Define regular expression for week sequence
+    pattern = r'/(\d+)\.CSV'
+
+    # Searching link for pattern 
+    match = re.search(pattern,link)
+
+    # Check for matches
+    if match:
+        # Return matched part of string (full string)
+        full_string = match.group(1)
+
+        # Removing last 2 zeros from string (so it is in YYMMDD format)
+        string = full_string[:-2] + '.csv'
+        
+        return string
+    else:
+        return None
 
 
 

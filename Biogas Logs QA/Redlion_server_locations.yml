@@ -1,0 +1,43 @@
+# Organize file paths to raw logs .csv files 
+
+# Farm Name:
+# url to SCADA server storing .csv logs
+# username
+# password
+
+
+Aurora Ridge: 
+  url: http://67.255.80.20:790/logs/GasUsage
+  username: user
+  password: 100
+  secondary: 0
+
+Berkshire: 
+  url: http://64.223.131.197:790/logs.htm?session=null&l=Weekly&p=Weekly
+  username: Operator
+  password: 1234
+  secondary: http://64.223.131.197:790/files/Logs/Weekly
+
+Chaput:
+  url: http://173.166.82.18:794/logs.htm?session=null&l=Weekly&p=Weekly
+  username: manager
+  password: 100
+  secondary: http://173.166.82.18:794/files/Logs/Weekly
+
+Four Hills:
+  url: http://69.54.29.71:790/logs.htm?session=null&l=Weekly&p=Weekly
+  username: Operator
+  password: 1234
+  secondary: http://69.54.29.71:790/files/Logs/Weekly
+
+Hanford:
+  url: http://205.157.152.61:798/logs.htm?session=null&l=Weekly&p=Weekly
+  username: Operator
+  password: 1234
+  secondary: http://205.157.152.61:798/files/Logs/Weekly
+
+Madera:
+  url: http://162.191.92.202:796/logs.htm?session=null&l=Weekly&p=Weekly
+  username: operator
+  password: 1234
+  secondary: http://162.191.92.202:796/files/Logs/Weekly
