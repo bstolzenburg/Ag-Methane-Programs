@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import os
 import yaml
 import re
+from pathlib import Path
 
 ## Setting Working Directory
 # Get the directory where the script is located
@@ -38,29 +39,24 @@ def main():
             csv_links = get_links(url,username,password,secondary)
             
             # Iterating through csv_links to download the .csv from each link as a dataframe
-            for link in csv_links[1:4]:
+            for link in csv_links[1:4]:                                                           # ONLY DOING 1:4 FOR TESTING
                 print('Downloading data for', project,' from: ',link)
                 print('')
 
                 # Getting week date label from link string to create .csv name
+                ## This will serve as the .csv file name
                 csv_name = extract_week_number(link)
-                
-                # Pseudocode for code additions 
-                
-                # For each weekly .csv file
 
-                ## Download the file (using download_logs() function)
-                ## Download raw .csv to folder (indicated in yaml)
-                ## Need to create code for separating files by year and creating new yearly folders if necessary
-                ## May need to do it based on actual timestamps
+                # Getting date part of .csv name 
+                date_part = csv_name.split('.')[0]
 
-                ## Check to see if weekly file already exists 
-                ### If yes, if # of rows in saved file is smaller than current, rewrite
-                ### If not, move on 
+                # Extracting year, month and day from the date part
+                year = int(date_part[:2])
+                month = int(date_part[2:4])
+                day = int(date_part[4:6])
+                print(year,month,day)
 
-                # Create dictionary storing master dataframes for each year
-                ## Key = year, item = dataframe
-                ## As each df goes by, extract year from each row and append it to corresponding master df
+
 
 
 
@@ -206,6 +202,15 @@ def extract_week_number(link):
         return string
     else:
         return None
+    
+
+# Function to return file path to 'gaslogs' directory in dropbox to set working directory 
+def GetDirectory(project):
+    home = Path.home()
+
+    gaslog_dir = os.path.join(home,'Patrick J Wood Dropbox','_operations','Gaslogs_new',project)
+    
+    return(gaslog_dir)
 
 
 

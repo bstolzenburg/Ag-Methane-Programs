@@ -22,7 +22,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 
 
 # Defining global variables for InfluxDB Client Information
-token = "C5PNIgNSlW86reiYOuXrEkGc0c-FgTpzdh0zB13FoRWmhBZUhgoXunGAlAqiPrhdY18nvxgD2pkP2dQX0PnsPQ=="
+token = "HTJGo6WzgHxIZn6Fv-MdfUG-nq2gQyKdqgexYAxpX4cqGvAusZYhevTbNc3jCBCpxZoRjKN6tYDpNGtcWvdpVQ=="
 org = "Ag Methane"
 url = 'http://localhost:8086/'
 
@@ -64,6 +64,7 @@ def main():
             print('')
             InfluxInput(df,device,farm)
             print('')
+    print('Finished uploading data')
 
 
 
