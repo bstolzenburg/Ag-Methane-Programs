@@ -31,8 +31,12 @@ setwd(target_dir)
 # Creating path variable for the 'Flow Data' folder
 path <- file.path(getwd(),'Formatted')
 
+
+
+
 # Getting list of files
 file_list <- list.files(path, full.names = TRUE)
+
 
 
 # Read all and merge horozontally
