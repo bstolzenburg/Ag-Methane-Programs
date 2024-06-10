@@ -657,7 +657,7 @@ flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 processed_logs$ch4_meter[processed_logs$ch4_meter ==0]<- NA
 
 # Calculating rolling mean window of 7 days before the timestamp
-roll_mean_window <- 168 * (60 / 15)  # Window size: 168 hours = 4 * (60 minutes / 15 minutes)
+roll_mean_window <- 168 * (60 / 15)  # Window size: 7 days (168 hours = 4 * (60 minutes / 15 minutes)
 
 # Creating ch4_sub column to calculate rolling average for missing ch4_meter readings 
 processed_logs <- processed_logs%>%
