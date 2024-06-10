@@ -1,4 +1,7 @@
-# Program to parse .xls monitor reports
+# Program to parse formatted .xls monitor reports from directory
+
+# Modifications: 
+# 6.10.24: Modified handling of duplicate dates that have discrepancies, included tibble to manually select which date/file combinations are to be excluded from final file
 
 library(plyr)
 library(readxl)
@@ -7,7 +10,7 @@ library(stringr)
 library(tibble)
 library(tidyverse)
 
-# Setting Dynamic Working Environment -----
+# Setting Working Environment -----
 ## Get user name
 user_name <- Sys.getenv("USERNAME")
 
@@ -31,9 +34,6 @@ setwd(target_dir)
 
 # Creating path variable for the 'Flow Data' folder
 path <- file.path(getwd(),'Formatted')
-
-
-
 
 # Getting list of files
 file_list <- list.files(path, full.names = TRUE)
@@ -90,14 +90,16 @@ all_data <- lapply(file_list,read_and_clean)%>%
 
 # Cleaning final dataframe -----------
 
-# Dropping columns
+# Dropping columns not related to livestock populations 
 all_data <- all_data[,-c(2:36)]
 
-# Dropping NAs 
+# Dropping any NA values 
 all_data <- all_data%>%
   drop_na()
 
-
+# Arranging data by date 
+all_data <- all_data%>%
+  arrange(Date)
 
 
 
@@ -113,21 +115,48 @@ data_cleaned <- all_data%>%
 duplicate_dates <- data_cleaned%>%
   filter(duplicated(Date) | duplicated(Date,fromLast = TRUE))
 
+duplicate_dates_tbl <- as_tibble(duplicate_dates)
+
 # Printing duplicates 
 message('\n The folloiwng rows contained duplicate dates with different values from separate files.... \n')
-duplicate_dates
-message('\n Please select the data you want to keep below \n')
+duplicate_dates_tbl
+dates_to_correct <- unique(duplicate_dates$Date)
+files_to_correct <- unique(duplicate_dates$file_name)
+message('\n Duplicate Dates... \n\n' )
+dates_to_correct
+message('\n Duplicate Files... \n\n' )
+files_to_correct
 
 
-## Manually selecting data we want to use for duplicates  ----------------------
 
+## Manually Excluding data -----
+### (i.e. date/file combinations that we do NOT want in the final df)  
 
+selected_rows <- tibble(
+  Date = as.Date(c("2023-12-01" ,"2024-01-01")),  
+  file_name = c("Madera Monitor 12.1.2023.xls","Madera Monitor 1.1.2024.xls")  
+)
 
+# Joining selected rows with final dataframe
+final_df <- anti_join(data_cleaned,selected_rows,by = c('Date','file_name'))
 
+# Crosschecking data ------
 
-# Arranging dataframe in chronological order  
-final_df <- data_cleaned %>%
-  arrange(Date)
+# Creating date sequence 
+date_seq <- seq.Date(min(final_df$Date), max(final_df$Date), by = 'month')
+date_seq
+
+# Identifying missing dates
+missing_dates <- setdiff(date_seq,final_df$Date)
+
+# Printing missing dates 
+if (is_empty(missing_dates) == FALSE){
+  message('The following dates were missing from the final dataframe \n\n')
+  missing_dates
+}else{
+  message('\n\n There were no missing dates in the final dataframe \n\n')
+}
+
 
 
 
