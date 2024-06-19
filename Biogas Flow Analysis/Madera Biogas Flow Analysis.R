@@ -14,7 +14,7 @@
 ## Updated logic for processing totalizer differences so first totalizer difference is maintained
 ## so it can be used for padding missing data. Instead check to see if previous totalizer value is zero. 
 ## Moved timestamp padding above totalizer lag so there are no conflicts with substitution
-## Added na.locf for flare flow (May 2023 engine overhaul)
+## Added na.locf for flare flow (May 2023 engine overhaul). 
 ## Filtered logs for filter_date and period_end
 
 
@@ -59,8 +59,8 @@ filter_date <- chron(dates. = '12/20/2022',                   ### This should co
 
 period_start <- as_datetime('2023-01-01 00:00:00',tz = 'GMT')
 
-period_end <- chron(dates. = '12/31/2023',
-                    times. = '23:45:00')     # OPTIONAL: End date for analysis
+# period_end <- chron(dates. = '12/31/2023',
+#                     times. = '23:45:00')     # OPTIONAL: End date for analysis. UNCOMMENT TO APPLY
 
 
 
@@ -195,6 +195,8 @@ merged_logs <- merged_logs%>%
 
 
 # Filtering merged logs ---------------
+
+# If period_end identified (uncommented section above) then applying filter to merged logs
 
 if(exists('period_end')){
   # Filtering merged logs for after filter_date and before period_end
