@@ -1,8 +1,11 @@
 # Biogas Flow Analysis Program 
 # Bryan Stolzenburg (Ag Methane Advisors)
-# 7.17.24
+# 3.14.24
 
-# Importing Modules ---------------
+
+# Program to process biogas flow logs and output .xlsx results
+
+# Importing Modules ----
 
 # Function to load project modules
 LoadModules <- function(){
@@ -21,41 +24,10 @@ LoadModules <- function(){
   library(stringr)
   library(padr)
   library(here)
-  library(conflicted)
 }
 
 # Loading modules
 LoadModules()
-
-# Resolving conflicts with packages 
-## Filter
-conflicts_prefer(dplyr::filter)
-conflicts_prefer(dplyr::arrange)
-conflicts_prefer(dplyr::mutate)
-conflicts_prefer(dplyr::lag)
-conflicts_prefer(dplyr::summarise)
-conflicts_prefer(dplyr::summarize)
-
-# Setting Dynamic Working Environment ------------------------------------------
-## Get user name
-user_name <- Sys.getenv("USERNAME")
-
-# Build base path
-base_path <- base_path <- file.path("C:", "Users", user_name, winslash = "\\")
-
-# Get target directory                                                           # Customize as needed
-target_dir <- file.path(base_path, "Patrick J Wood Dropbox",
-                        "_operations",
-                        "Clients",
-                        "Philip Verwey Farms",
-                        'Farm1Madera',
-                        'RP 2023',
-                        'Calcs',
-                        'Flow',
-                        'eLCFS')
-
-# Setting working directory
-setwd(target_dir)
 
 
 # Reading in Gas Logs ---------------
@@ -79,13 +51,7 @@ ParseYAML <- function(farm){
   farm_name <- paste(farm,'.',sep = '')
   
   # Creating path to Log_Columns.yml
-  yml_path <- file.path(path_home(),'Patrick J Wood Dropbox',
-                        '_operations',
-                        'Software',
-                        'Github',
-                        'Ag-Methane-Programs',
-                        'Biogas Flow Analysis',
-                        'Log_Columns.yml')
+  yml_path <- file.path(path_home(),'Patrick J Wood Dropbox','_operations','Software','Github','Ag-Methane-Programs','Biogas Flow Analysis','Log_Columns.yml')
   
   # Reading in Log_Columns.yml to a nested list
   yml_list <- read_yaml(yml_path)
@@ -110,10 +76,10 @@ ParseYAML <- function(farm){
   
 }
 
-# Parsing YAML file for farm
+# Parsing YAML file for farm 
 ### Aurora Ridge | Chaput | Four Hills | Hanford | Madera
 
-farm <- ''                                                              # Enter farm name here
+farm <- '' # Enter farm name here
 
 cfg <- ParseYAML(farm)                                 
 
@@ -124,25 +90,26 @@ column_names <- cfg[[1]]
 indexes <- cfg[[2]]
 
 
-# Cleaning Merged Logs ------------------------------------------------------------------------
 
-## Fixing degree symbol in column headers ----
+# Cleaning Merged Logs -----
 
-# Convert column names to character and then to UTF-8
-colnames(merged_logs) <- as.character(colnames(merged_logs))
-colnames(merged_logs) <- iconv(colnames(merged_logs), "latin1", "UTF-8")
+# Adding degrees symbol to temperature column headers
+colnames(merged_logs) <- gsub('<b0>','\U00B0',colnames(merged_logs))
 
-## Saving original headers to be applied at end of program
+## Saving original headers to be re-applied at end
 
 # Saving the original column names as 'headers' variable
 og_headers <- colnames(merged_logs)
 
 # Get number of headers in original dataframe 
-# -1 to exclude date_time column from original headers
 max_header <- as.integer(length(og_headers))
 
 
-## Formatting Dates and Times and sorting dataframe ----------------------------------------------------------------
+
+
+## Cleaning up column headers ----
+
+### Formatting Dates and Times and sorting dataframe ----
 
 # Convert all dates to same format
 merged_logs$Date <- as.Date(parse_date_time(merged_logs$Date,c('mdy','ymd')))
@@ -164,16 +131,17 @@ DateTime<- function(logs){
 # Creating date_time variable
 merged_logs <- DateTime(merged_logs)
 
-# Removing any duplicate rows 
+# Removing any duplicate rows based on unique date_time column
 merged_logs <- merged_logs%>%
   distinct()
 
 
-# Sorting by date_time in descending order by date_time
+# Sorting by date_time in descending order
 merged_logs <- merged_logs%>%
   arrange(desc(date_time))
 
-## Cleaning Gas Log Column Headers ------------------------------------------------------------------------
+
+## Cleaning Gas Log Column Headers ---- 
 
 # Function to clean column headers
 
@@ -205,6 +173,9 @@ CleanCols <- function(index,names){
   # Adding the new names to the log_columns dataframe 
   log_columns$new_name <- new_names 
   
+  # Checking to make sure the new names are correct 
+  print(log_columns)
+  
   # Creating list of new header names 
   new_names <- headers
   
@@ -224,18 +195,22 @@ CleanCols <- function(index,names){
 merged_logs <- CleanCols(indexes,column_names)
 
 # Cleaning up directory 
-rm(cfg)
+rm(indexes,cfg,path)
 
 
 
 
-
-# Processing Gas Logs ----------------------------------------------------------------
+# Processing Gas Logs -----
 
 # Create list of totalizers 
+## Filtering updated column names for 'totalizer' 
 totalizer_list <- column_names[grepl('totalizer',column_names)]
+message('Printing totalizer columns to be processed')
+print(totalizer_list)
 
-## Processing merged logs------------
+
+
+## Initial Processing of merged logs ----
 
 TotalizerDiff <- function(merged_logs,totalizer_list){
   # Getting first timestamp
@@ -252,18 +227,39 @@ TotalizerDiff <- function(merged_logs,totalizer_list){
     # Creating processed_logs df
     processed_logs <- processed_logs%>%
       mutate(!! diff_name := case_when(date_time == time1 ~ 0,
-                                       TRUE ~ as.numeric(get(totalizer) - lead(get(totalizer)))))
+                                    TRUE ~ as.numeric(get(totalizer) - lead(get(totalizer)))))
   }
   
   return(processed_logs)
 }
 
+# Calling function
 processed_logs <- TotalizerDiff(merged_logs,totalizer_list)
 
+# Gap Analysis ----
+
+# Convert date to correct format for excel 
+processed_logs$Date <- mdy(processed_logs$Date)
+
+# Calculating the time difference based on date_time column
+processed_logs<-processed_logs%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
 
 
 
-## Processing Totalizer Values ---------------------------------------------------------------
+# Creating a missing timestamp column (1 timestamp = 15 minutes)
+processed_logs<-processed_logs%>%
+  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
+                                       time_diff > 15 ~ time_diff/15,
+                                       is.na(time_diff)==TRUE ~ 0))
+
+
+# Dropping columns from the final dataframe
+processed_logs<- processed_logs%>%
+  select(-c('time_diff',))
+
+## Processing Totalizer Values ----
+
 ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   # Quoting variables in function 
   totalizer <- enquo(totalizer)
@@ -275,15 +271,15 @@ ProcessLogs<-function(logs,totalizer,total_diff,new_name,substitution_method){
   logs<- logs%>%
     mutate(!!new_name := case_when(!!totalizer == 0 ~ 0,
                                    !!total_diff < 0 ~ 0,
-                                   lead(!!totalizer) == 0 ~ 0,
+                                   !!total_diff > 1000000 ~ 0,
                                    TRUE ~ as.numeric(!!total_diff)))
   
   # Creating data substitution label, any time there is a negative totalizer difference 
   logs <- logs%>%
     mutate(!!substitution_method := case_when(!!total_diff < 0 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
-                                              lead(!!totalizer)==0 ~ 'Invalid Totalizer Difference',
+                                              !!total_diff > 1000000 ~ 'Invalid Totalizer Difference, Flow Set to Zero',
                                               TRUE ~ "Totalizer Feasible"))
-  
+                                              
   
   return(logs)
 }
@@ -310,7 +306,7 @@ for (totalizer in totalizer_list){
     
   }else{
     
-    # Creating name for difference column
+    # Creating name for flow totalizer difference column
     diff_name <-paste(totalizer,'diff',sep = '_')
     
     # Creating flow variable name
@@ -322,7 +318,7 @@ for (totalizer in totalizer_list){
     
   }
   
-  # Calling ProcessLogs function creating new variable
+  # Calling ProcessLogs function creating new variables for totalizer differences 
   processed_logs <- ProcessLogs(processed_logs,get(totalizer),get(diff_name),new_name,sub_method)
   
   
@@ -331,59 +327,30 @@ for (totalizer in totalizer_list){
 rm(diff_name,new_name,sub_method,totalizer)
 
 
+## Flare Operational Flow ----
 
-
-## Flare Operational Flow ------------------------------------------------------------------------------
-# Processing operational/non-operational flare flow again based on new flare_flow numbers 
-
-## Flare Operational Activity
-FlareOperation <- function(logs,thermocouple,flare_flow){
+FlareOperation <- function(logs,temp,temp_avg,flare_flow){
   # Quoting variables 
-  thermocouple <- enquo(thermocouple)
+  temp <- enquo(temp)
+  temp_avg <- enquo(temp_avg)
   flare_flow <- enquo(flare_flow)
   
-  # Determining if flare was operational based on temperature
+  # Determining if flare was operational based on temperature (avg temp & actual temp)
   logs<- logs%>% 
-    mutate(flare_oper = case_when(!!thermocouple >= 120  ~ 'Operational',
-                                  !!thermocouple < 120 ~ 'Non-operational',
-                                  TRUE ~ 'Non-operational'))
+    mutate(flare_oper = case_when((!!temp >= 120 | !!temp_avg >=120) & (!!temp < 2000 | !!temp_avg < 2000) ~ 'Operational',
+                                  (!!temp <= 120 & !!temp_avg <= 120) | (!!temp > 2000 & !!temp_avg > 2000) ~ 'Non-operational'))
   
   # Declaring flow as operational or non-operational based on F1_oper
   logs<- logs%>%
-    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.numeric(flare_flow),
-                                     TRUE ~ 0))%>%
-    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.numeric(flare_flow),
-                                        TRUE ~ 0))
+    mutate(flare_flow_op = case_when(flare_oper == 'Operational' ~ as.integer(flare_flow),
+                                     TRUE ~ as.integer(0)))%>%
+    mutate(flare_flow_nonop = case_when(flare_oper == 'Non-operational' ~ as.integer(flare_flow),
+                                        TRUE ~ as.integer(0)))
   return(logs)
 }
-# Differentiating flare operation
-processed_logs<-FlareOperation(processed_logs,flare_temp,flare_flow)
 
-
-
-
-
-
-
-# Gap Analysis & Missing Timestamp Recognition --------------------------------------------
-
-# Convert date to correct format for excel 
-processed_logs$Date <- mdy(processed_logs$Date)
-
-# Calculating the time difference based on date_time column
-processed_logs<-processed_logs%>%
-  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
-
-
-
-# Creating a missing timestamp column (1 timestamp = 15 minutes)
-processed_logs<-processed_logs%>%
-  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
-                                       time_diff > 15 ~ time_diff/15,
-                                       is.na(time_diff)==TRUE ~ 0))
-
-
-
+# Processing operational/non-operational flare flow 
+processed_logs<-FlareOperation(processed_logs,flare_temp,flare_temp_avg,flare_flow)
 
 
 ## Gap Summaries ----
@@ -482,23 +449,162 @@ flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 timestamp_summary <- TimestampSummary(processed_logs,missing_timestamp)
 
 
+# UNCOMMENT FOLLOWING SECTION IF NEED TO PAD MISSING DATA (i.e. create empty rows for missing timestamps)
+
+# ## Padding Missing Data ----- 
+# 
+# ## Filling in missing timestamps with empty rows (NA) in the 'processed_logs_filled' df
+# 
+# # Merge 'Date' and 'Time' columns to create a single timestamp column
+# processed_logs$date_time <- as.POSIXct(paste(processed_logs$Date, processed_logs$Time), 
+#                                        format = "%Y-%m-%d %H:%M:%S",tz = "GMT")
+# 
+# 
+# 
+# # Padding dataset for missing timestamps 
+# processed_logs_filled <- pad(processed_logs,by = "date_time")
+# 
+# # Arrange in descending order 
+# processed_logs_filled <- processed_logs_filled%>%
+#   arrange(desc(date_time))
+# 
+# # Replacing NA's in the Date and Time columns 
+# processed_logs_filled$Date <- as.Date(processed_logs_filled$date_time)
+# processed_logs_filled$Time <- format(processed_logs_filled$date_time,format = "%H:%M:%S" )
+# 
+# 
+# 
+# # Filling NAs with most recent feasible totalizer value
+# 
+# ## Replace NAs with the most recent non-NA value in each column
+# processed_logs_filled$G1_flow <- na.locf(processed_logs_filled$G1_flow)
+# processed_logs_filled$G1_kwh <- na.locf(processed_logs_filled$G1_kwh)
+# processed_logs_filled$missing_timestamp <- na.locf(processed_logs_filled$missing_timestamp)
+# 
+# # Creating data substitution label
+# processed_logs_filled <- processed_logs_filled%>%
+#   mutate(flow_data_substitution = ifelse(missing_timestamp != 0,
+#                                      "Flow Data Gap Substituted",
+#                                      "No Substitution"))
+# 
+# # Function to recalculate the flow value for periods w/ missing timestamps by dividing the 
+# # most recent totalizer difference by the # of missing timestamps and applying it across the 
+# # range of missing rows
+# 
+# fill_flow_variables <- function(variables_list, df) {
+#   filled_df <- df
+#   
+#   for (var in variables_list) {
+#     filled_df <- filled_df %>%
+#       mutate_at(vars({{ var }}), ~ ifelse(missing_timestamp != 0,
+#                                           ./missing_timestamp,
+#                                           .))
+#   }
+#   
+#   return(filled_df)
+# }
+# 
+# # Define the list of variables to perform the operation on
+# variables_list <- c()                          #INPUT
+# 
+# # Call the function
+# processed_logs_filled <- fill_flow_variables(variables_list, processed_logs_filled)
+# 
+# # Replacing processed_logs with processed_logs_filled
+# processed_logs <- processed_logs_filled
+# 
+# 
+# 
+# ### Creating gap_summary for filled timestamps --------
+# 
+# # Function to create gap summary for missing timestamps 
+# GapSummary <- function(logs,missing_timestamp){
+#   # Quoting variables 
+#   missing_timestamp <- enquo(missing_timestamp)
+#   
+#   # Filtering processed logs where there are missing timestamps
+#   gap_summary <- logs%>%
+#     
+#     # Adding row numbers so hyperlinks can be created
+#     mutate(row_numbers = seq.int(nrow(logs))+1)%>%
+#     
+#     # Filtering for invalid totalizer differences
+#     filter(!!missing_timestamp != 0)%>%
+#     
+#     # Creating hyperlink string to link to processed logs 
+#     mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
+#     
+#     # Selecting columns for gap summary 
+#     ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
+#     select(Date,Time,G1_totalizer_diff,G1_flow,G1_kwh_totalizer_diff,G1_kwh,missing_timestamp,link)
+#   
+#   
+#   
+#   return(gap_summary)
+#   
+# }
+# 
+# # Creating flow gap substitution summary 
+# flow_gap_summary <- GapSummary(processed_logs,missing_timestamp)
 
 
 
 
-# Creating Biogas Flow Summary Table -------------------
+# UNCOMMENT FOLLOWING SECTION IF USING CONTINUOUS CH4 ANALYZER
 
-
-# Convert period_start to posixct
-period_start <- as.POSIXct(period_start)
-
-# Create flow summary table 
-flow_summary <- processed_logs%>%
-  filter(date_time >= period_start)%>%
-  group_by(Month = floor_date(Date,'month'))%>%
-  summarise('Engine Flow (SCF)'= sum(G1_flow),
-            'Flare Flow (SCF)'= sum(flare_flow,na.rm = TRUE),
-            'Engine kWH' = sum(G1_kwh))
+# # Weighted CH4 % Calculations ----
+# 
+# # Filling in missing CH4 values for empty columns
+# processed_logs$ch4_meter[processed_logs$ch4_meter ==0]<- NA
+# 
+# # Calculating rolling mean window of 7 days before the timestamp
+# roll_mean_window <- 168 * (60 / 15)  # Window size: 168 hours = 4 * (60 minutes / 15 minutes)
+# 
+# ## Creating ch4_sub column to calculate rolling average for missing ch4_meter readings -------
+# processed_logs <- processed_logs%>%
+#   
+#   # Create ch4_substitution label
+#   mutate(ch4_substitution = ifelse(is.na(ch4_meter),
+#                           "CH4 Reading Substituted",
+#                           "No Substitution"))%>%
+#   # Substitute NA CH4 readings
+#   mutate(ch4_sub = ifelse(is.na(ch4_meter),
+#                           rollmean(ch4_meter, k = roll_mean_window, align ='right',na.rm = TRUE),
+#                           ch4_meter))
+# 
+# 
+# ## Creating Gap Summary for CH4 Substitution
+# Ch4_gap_summary <- processed_logs%>%
+#   # Adding row numbers so hyperlinks can be created
+#   mutate(row_numbers <<- seq.int(nrow(processed_logs))+1)%>%
+#   
+#   # Creating hyperlink string to link to processed logs "Date" column
+#   mutate(link = makeHyperlinkString(sheet = 'Processed Logs',
+#                                     text = 'Link to Processed_Logs',
+#                                     row = row_numbers, 
+#                                     col = 1))%>%
+#   
+#   # Filtering for instances where ch4_substitution occurred
+#   filter(ch4_substitution != 'No Substitution')%>%
+#   
+#   # Selecting columns
+#   select(Date,Time,ch4_meter,ch4_sub,link)
+#   
+# 
+# 
+# ## Calculating weighted average for CH4% --------
+# 
+# # Creating month/year column 
+# processed_logs$Month <- as.yearmon(processed_logs$Date)
+# 
+# # Calculating weighted average, weighting CH4% for each timestamp according to the gas flow (G1_flow)
+# weighted_average <- processed_logs%>%
+#   group_by(Month)%>%
+#   summarise('Weighted Average CH4%' = weighted.mean(ch4_sub,G1_flow,na.rm = TRUE)/100)
+# 
+# # Removing the month column from the processed_logs df
+# processed_logs<- processed_logs%>%
+#   select(-Month)
 
 
 
@@ -508,7 +614,7 @@ flow_summary <- processed_logs%>%
 
 # Removing date_time column so excel will format date/time correctly
 processed_logs <- processed_logs%>%
-  select(- date_time,-time_diff)
+  select(- date_time)
 
 
 ### Returning column headers to their original values
@@ -525,30 +631,29 @@ rm(og_headers,max_header,totalizer_list,x)
 # Garbage Clean
 gc()
 
+
 # Writing Results to Excel ----
 
-# Setting working directory
-setwd(target_dir)
-
-
-# Output file names
+# Output file name
 date <- format(Sys.Date(),"%m.%d.%y")
 
-# Creating file name for .xlsx summary and .csv processed_logs
-file_name = paste('_WORKING_',date,'.xlsx', sep = '')   # Modify as needed
+file_name = paste(farm,date,'.xlsx', sep = '_')     
+
+# Resetting working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # Printing available dataframes in global environment
 names(which(unlist(eapply(.GlobalEnv,is.data.frame)))) # Choose from this list
 
 
 # Creating list of dataframes to include as tables in the results spreadsheet
-# 'Excel Sheet Name' = 'Dataframe Name'
-data_tables <- list('Processed Logs' = processed_logs,
-                    'Flow Summary' = flow_summary,
+# 'Excel Sheet Name' = Dataframe Name
+
+# UPDATE AS NEEDED
+data_tables <- list('Processed Logs'= processed_logs,                         ####### INPUT
                     'Gap Summary' = timestamp_summary,
                     'Engine Gap Summary' = G1_gap_summary,
                     'Flare Gap Summary' = flare_gap_summary)
-
 
 
 # Calling function for all dataframes in list 
@@ -557,24 +662,33 @@ ToExcel <- function(file_name, data_tables) {
   if (!file.exists(file_name)) {
     createNewExcelFile(file_name, data_tables)
   } else {
-    
-    message('\n',file_name,' already exists... \n\n','FILE WILL BE OVERWRITTEN IF PATH NOT CHANGED')
-    
-    readline(prompt = 'Press [Enter] to continue: ')
-    createNewExcelFile(file_name, data_tables)
-    
-    
+    handleExistingFile(file_name, data_tables)
   }
 }
 
 createNewExcelFile <- function(file_name, data_tables) {
-  message('Creating excel file', '\n\n')
-  
-  
+  cat('File ', file_name, ' doesn\'t exist... Creating new excel file', '\n\n')
   wb <- createWorkbook()
-  message(file_name, ' to be created in current directory', '\n\n')
+  cat(file_name, ' created in current directory', '\n\n')
   processTables(wb, data_tables)
-  saveAndFinish(wb, file_name,overwrite = TRUE)
+  saveAndFinish(wb, file_name)
+}
+
+handleExistingFile <- function(file_name, data_tables) {
+  cat('File: ', file_name, ' already exists...\n\n')
+  user_input <- askForOverwrite(file_name)
+  
+  if (user_input == 'Y') {
+    wb <- loadWorkbook(file_name)
+    clearAndWriteData(wb, data_tables)
+    saveAndFinish(wb, file_name, TRUE)
+  } else {
+    new_file_name <- askForNewFileName()
+    cat('Creating new excel file...\n\n')
+    wb <- createWorkbook()
+    processTables(wb, data_tables)
+    saveAndFinish(wb, new_file_name)
+  }
 }
 
 processTables <- function(wb, data_tables) {
@@ -589,7 +703,7 @@ processTables <- function(wb, data_tables) {
         fitColumns(wb, sheet1, df)
       }
     } else {
-      message("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
+      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
   }
 }
@@ -619,14 +733,26 @@ clearAndWriteData <- function(wb, data_tables) {
         fitColumns(wb, sheet_name, df)
       }
     } else {
-      message("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
+      cat("Skipping empty dataframe for sheet:", sheet_name, "\n\n")
     }
   }
 }
 
+askForOverwrite <- function(file_name) {
+  user_prompt <- paste('Do you want to overwrite file:', file_name, '(Y/N) ', sep = ' ')
+  cat('\n')
+  user_input <- readline(prompt = user_prompt)
+  toupper(trimws(user_input))
+}
+
+askForNewFileName <- function() {
+  new_file_name <- readline(prompt = 'Enter New File Name (with .xlsx extension and no spaces): ')
+  new_file_name
+}
+
 saveAndFinish <- function(wb, file_name, overwrite = FALSE) {
   saveWorkbook(wb, file_name, overwrite = overwrite)
-  message('Finished','\n', file_name, ' saved\n')
+  cat('Finished...', file_name, ' saved\n')
 }
 
 
@@ -636,7 +762,6 @@ ToExcel(file_name,data_tables)
 
 # Garbage Clean
 gc()
-
 
 
 

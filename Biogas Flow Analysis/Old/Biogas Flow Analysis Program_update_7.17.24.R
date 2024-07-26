@@ -331,95 +331,6 @@ for (totalizer in totalizer_list){
 
 rm(diff_name,new_name,sub_method,totalizer)
 
-# Data Substitution -----------------------------------------
-
-## Padding Missing Data --------------------------
-
-# Convert date to correct format for excel 
-processed_logs$Date <- mdy(processed_logs$Date)
-
-## Filling in missing timestamps with empty rows (NA) in the 'processed_logs_filled' df
-
-# Merge 'Date' and 'Time' columns to create a single timestamp column
-processed_logs$date_time <- as.POSIXct(paste(processed_logs$Date, processed_logs$Time), 
-                                       format = "%Y-%m-%d %H:%M:%S",tz = "GMT")
-
-
-
-# Padding dataset for missing timestamps 
-processed_logs_filled <- pad(processed_logs,by = "date_time")
-
-# Arrange in descending order 
-processed_logs_filled <- processed_logs_filled%>%
-  arrange(desc(date_time))
-
-
-
-## Creating Summary of Padded Data --------------
-
-# Identify the rows with NAs in the original data
-missing_data <- processed_logs_filled %>%
-  mutate(missing_flag = is.na(Date)) %>%
-  arrange(desc(date_time))
-
-# Create a grouping variable to identify consecutive NAs
-missing_data <- missing_data %>%
-  mutate(group = cumsum(!missing_flag & lag(missing_flag, default = FALSE)) + 1) %>%
-  filter(missing_flag) %>%
-  group_by(group) %>%
-  summarise(
-    start_gap = min(date_time),
-    end_gap = max(date_time),
-    missing_timestamps = n()
-  ) %>%
-  mutate(missing_intervals = missing_timestamps * 15)
-
-# Add the values for G1_totalizer and flare_totalizer before start_gap and after end_gap
-missing_data <- missing_data %>%
-  rowwise() %>%
-  mutate(
-    before_gap_idx = which.max(processed_logs_filled$date_time <= start_gap) + 1,
-    after_gap_idx = which.min(processed_logs_filled$date_time >= end_gap) - 1,
-    G1_totalizer_before_gap = processed_logs_filled$G1_totalizer[before_gap_idx],
-    flare_totalizer_before_gap = processed_logs_filled$flare_totalizer[before_gap_idx],
-    G1_totalizer_after_gap = processed_logs_filled$G1_totalizer[after_gap_idx],
-    flare_totalizer_after_gap = processed_logs_filled$flare_totalizer[after_gap_idx]
-  ) %>%
-  ungroup()
-
-# Select the desired columns for the summary
-missing_summary <- missing_data %>%
-  select(
-    start_gap, end_gap, missing_timestamps, missing_intervals,
-    G1_totalizer_before_gap, flare_totalizer_before_gap,
-    G1_totalizer_after_gap, flare_totalizer_after_gap
-  )
-
-
-
-
-
-
-# Replacing NA's in the Date and Time columns in processed_logs_filled
-processed_logs_filled$Date <- as.Date(processed_logs_filled$date_time)
-processed_logs_filled$Time <- format(processed_logs_filled$date_time,format = "%H:%M:%S" )
-
-rm(missing_data)
-
-
-
-
-## Performing Data Substitution ----------
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -455,7 +366,28 @@ processed_logs<-FlareOperation(processed_logs,flare_temp,flare_flow)
 
 
 
-## Creating Gap Summaries ----
+# Gap Analysis & Missing Timestamp Recognition --------------------------------------------
+
+# Convert date to correct format for excel 
+processed_logs$Date <- mdy(processed_logs$Date)
+
+# Calculating the time difference based on date_time column
+processed_logs<-processed_logs%>%
+  mutate(time_diff = as.numeric(difftime(date_time,lead(date_time),units = c('mins'))))
+
+
+
+# Creating a missing timestamp column (1 timestamp = 15 minutes)
+processed_logs<-processed_logs%>%
+  mutate(missing_timestamp = case_when(time_diff == 15 ~ 0,
+                                       time_diff > 15 ~ time_diff/15,
+                                       is.na(time_diff)==TRUE ~ 0))
+
+
+
+
+
+## Gap Summaries ----
 
 ## Funciton to create a gap summary for engines
 EngineSummary <- function(logs,device_flow_valid,device_kwh_valid){
@@ -512,7 +444,32 @@ FlareSummary <- function(logs,device_flow_valid){
   
 }
 
-
+# Function to create gap summary for missing timestamps 
+TimestampSummary <- function(logs,missing_timestamp){
+  # Quoting variables 
+  missing_timestamp <- enquo(missing_timestamp)
+  
+  # Filtering processed logs where there are missing timestamps
+  gap_summary <- logs%>%
+    
+    # Adding row numbers so hyperlinks can be created
+    mutate(row_numbers = seq.int(nrow(logs))+1)%>%
+    
+    # Filtering for invalid totalizer differences
+    filter(!!missing_timestamp != 0)%>%
+    
+    # Creating hyperlink string to link to processed logs 
+    mutate(link = makeHyperlinkString(sheet = 'Processed Logs',text = 'Link to Processed_Logs',row = row_numbers, col = 1))%>%
+    
+    # Selecting columns for gap summary 
+    ## Adding in G1_diff and G1_kwh to provide justification for use of totalizer values across gaps
+    select(Date,Time,!!missing_timestamp,G1_totalizer_diff,G1_kwh_totalizer_diff,link)
+  
+  
+  
+  return(gap_summary)
+  
+}
 
 ### Creating gap summaries ---- 
 ##                                                                              # ADD ADDITIONAL FUNCTION CALLS IF GAP SUMMARY FOR OTHER DEVICES NEEDED
@@ -522,13 +479,16 @@ G1_gap_summary <- EngineSummary(processed_logs,G1_flow_valid,G1_kwh_valid)
 ## Flare 
 flare_gap_summary <- FlareSummary(processed_logs,flare_flow_valid)
 
+## Missing timestamps 
+timestamp_summary <- TimestampSummary(processed_logs,missing_timestamp)
+
 
 
 
 
 
 # Creating Biogas Flow Summary Table -------------------            
-                                                                                # CUSTOMIZE FLOW SUMMARY TABLES AS NEEDED
+##                                                                              # CUSTOMIZE FLOW SUMMARY TABLES AS NEEDED
 
 # Create flow summary table 
 flow_summary <- processed_logs%>%
@@ -539,7 +499,7 @@ flow_summary <- processed_logs%>%
             'Engine kWH' = sum(G1_kwh))
 
 
-# Cleaning up Final Dataframe -----------------------------------------
+# Cleaning up Final Dataframe ----
 
 ## Formatting date for excel ----
 
@@ -570,7 +530,6 @@ setwd(target_dir)
 date <- format(Sys.Date(),"%m.%d.%y")
 
 # Creating file name for .xlsx summary and .csv processed_logs                  # CUSTOMIZE FILE NAME AS NEEDED
-
 
 file_name = paste('Madera 2023-2024 Offset Flow Summary_WORKING_',date,'.xlsx', sep = '')               
 
