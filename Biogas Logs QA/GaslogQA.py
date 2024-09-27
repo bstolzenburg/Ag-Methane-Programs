@@ -132,6 +132,10 @@ def main():
 
         # Reading the merged logs csv into a dataframe 
         logs = pd.read_csv(csv,encoding = 'ISO-8859-1',parse_dates = ['Date'])
+
+        # Explicitly converting numeric cells to numbers to avoid numbers being interpreted as text by excel 
+        if farm_name == 'fourhills':
+            logs['Flare 1 15 Minute Average (°F)'] = pd.to_numeric(logs['Flare 1 15 Minute Average (°F)'], errors = 'coerce')
         
 
 
